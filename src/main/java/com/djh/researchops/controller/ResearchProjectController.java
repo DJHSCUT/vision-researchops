@@ -2,6 +2,7 @@ package com.djh.researchops.controller;
 
 import com.djh.researchops.common.ApiResponse;
 import com.djh.researchops.dto.CreateProjectRequest;
+import com.djh.researchops.dto.UpdateProjectRequest;
 import com.djh.researchops.service.ResearchProjectService;
 import com.djh.researchops.vo.ResearchProjectVO;
 import jakarta.validation.Valid;
@@ -9,6 +10,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/projects")
@@ -40,5 +43,30 @@ public class ResearchProjectController {
         return ApiResponse.success(
                 researchProjectService.getById(id)
         );
+    }
+
+    @GetMapping
+    public ApiResponse<List<ResearchProjectVO>> getProjects() {
+
+        return ApiResponse.success(
+                researchProjectService.getAll()
+        );
+    }
+
+    @PatchMapping("/{id}")
+    public ApiResponse<ResearchProjectVO> updateProject(
+            @PathVariable Long id,
+            @Valid @RequestBody UpdateProjectRequest request) {
+
+        return ApiResponse.success(
+                researchProjectService.update(id, request)
+        );
+    }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> deleteProject(@PathVariable Long id) {
+
+        researchProjectService.delete(id);
+        return ResponseEntity.noContent().build();
     }
 }
