@@ -1,0 +1,1 @@
+<template><section class="state-panel"><p class="eyebrow">404</p><h1 class="state-title">Page not found</h1><p>The page you are looking for is unavailable.</p><RouterLink to="/projects" class="view-link">Back to projects →</RouterLink></section></template>
