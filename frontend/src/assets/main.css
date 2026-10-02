@@ -65,6 +65,8 @@ h2 { font-size: 18px; font-weight: 600; letter-spacing: -.5px; }
 .status-badge { display: inline-flex; align-items: center; gap: 7px; font-size: 9px; font-weight: 650; letter-spacing: .7px; padding: 7px 9px; border-radius: 7px; background: #f0f1f4; color: #717885; overflow-wrap: anywhere; max-width: 100%; }
 .tiny-dot { width: 5px; height: 5px; border-radius: 50%; background: currentColor; flex-shrink: 0; display: inline-block; }
 .status-active { color: #597b6b; background: #eff5f1; }
+.status-running { color: #2861af; background: #edf3fc; }
+.status-failed { color: #a65353; background: #faf0f0; }
 .project-card h3 { font-size: 17px; font-weight: 600; line-height: 1.45; letter-spacing: -.4px; min-height: 49px; overflow-wrap: anywhere; }
 .project-card h3 a:hover { color: #2869c8; }
 .project-description { font-size: 13px; line-height: 1.8; color: #8a909b; margin-top: 12px; min-height: 70px; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; white-space: pre-wrap; }
@@ -117,6 +119,16 @@ dd { margin: 0; }
 .el-message-box__title { font-weight: 600; }
 .el-message-box__content { line-height: 1.8; padding: 17px 0 22px; overflow-wrap: anywhere; }
 .danger-confirm { --el-button-bg-color: #b55252; --el-button-border-color: #b55252; --el-button-hover-bg-color: #a54646; --el-button-hover-border-color: #a54646; }
+.tasks-section { margin-top: 42px; }
+.task-toolbar .eyebrow { margin-bottom: 10px; }
+.task-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
+.task-card { background: #fff; border-radius: 14px; padding: 26px 28px 14px; box-shadow: 0 2px 12px #24262b04; min-width: 0; }
+.task-card-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; }
+.task-card-heading h3 { font-size: 17px; font-weight: 600; line-height: 1.6; overflow-wrap: anywhere; }
+.task-card-heading .status-badge { flex-shrink: 0; }
+.task-description { margin-top: 16px; color: #858b95; font-size: 13px; line-height: 1.9; white-space: pre-wrap; overflow-wrap: anywhere; }
+.task-card .card-dates { font-size: 11px; }
+.task-card-footer .muted { margin-top: 0; }
 @media (max-width: 1440px) {
   .main-content { padding: 42px 34px; }
   .sidebar { width: 190px; padding: 32px 16px; }
@@ -143,4 +155,7 @@ dd { margin: 0; }
   .toolbar-actions { width: 100%; }
   .search-input { flex: 1; }
   .el-dialog { width: calc(100% - 32px) !important; }
+  .task-grid { grid-template-columns: 1fr; }
+  .task-toolbar .toolbar-actions { flex-wrap: wrap; }
+  .task-card { padding: 24px 20px 14px; }
 }

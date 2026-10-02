@@ -3,6 +3,7 @@ import { computed, nextTick, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { createProject, updateProject } from '../api/project'
 import { buildProjectChanges, getStatusOptions } from '../utils/project'
+import { getStatusLabel } from '../utils/status'
 
 const props = defineProps({
   modelValue: Boolean,
@@ -46,7 +47,7 @@ async function save() {
     ? buildProjectChanges(props.project, form)
     : { name: form.name, description: form.description }
   if (!Object.keys(fields).length) {
-    ElMessage.info('No changes to save')
+    ElMessage.info('没有需要保存的修改')
     return
   }
   saving.value = true
@@ -65,21 +66,21 @@ async function save() {
 </script>
 
 <template>
-  <ElDialog :model-value="modelValue" :title="editing ? 'Edit project' : 'New project'" width="540px"
+  <ElDialog :model-value="modelValue" :title="editing ? '编辑项目' : '新建项目'" width="540px"
     :close-on-click-modal="false" :close-on-press-escape="!saving" :show-close="!saving" :before-close="close" @update:model-value="close">
-    <p class="dialog-intro">{{ editing ? 'Keep your research context up to date.' : 'Give your next research idea a place to grow.' }}</p>
+    <p class="dialog-intro">{{ editing ? '更新项目信息，记录研究进展。' : '创建项目，开始记录新的研究工作。' }}</p>
     <ElForm ref="formRef" :model="form" :rules="rules" label-position="top" :disabled="saving" @submit.prevent="save">
-      <ElFormItem label="Project name" prop="name">
-        <ElInput v-model="form.name" maxlength="100" placeholder="Name your research project" autofocus />
+      <ElFormItem label="项目名称" prop="name">
+        <ElInput v-model="form.name" maxlength="100" placeholder="请输入研究项目名称" autofocus />
       </ElFormItem>
-      <ElFormItem label="Description" prop="description">
-        <ElInput v-model="form.description" type="textarea" :rows="5" maxlength="500" show-word-limit placeholder="What are you working towards?" />
+      <ElFormItem label="项目描述" prop="description">
+        <ElInput v-model="form.description" type="textarea" :rows="5" maxlength="500" show-word-limit placeholder="简要描述研究目标或内容（选填）" />
       </ElFormItem>
-      <ElFormItem v-if="editing" label="Status" prop="status">
-        <ElSelect v-model="form.status" placeholder="Select status"><ElOption v-for="status in statusOptions" :key="status" :label="status" :value="status" /></ElSelect>
-        <p class="field-hint">Options reflect states defined or already used by the backend.</p>
+      <ElFormItem v-if="editing" label="状态" prop="status">
+        <ElSelect v-model="form.status" placeholder="请选择状态"><ElOption v-for="status in statusOptions" :key="status" :label="getStatusLabel(status)" :value="status" /></ElSelect>
+        <p class="field-hint">状态选项来自当前项目已使用的状态。</p>
       </ElFormItem>
     </ElForm>
-    <template #footer><ElButton :disabled="saving" @click="close">Cancel</ElButton><ElButton type="primary" :loading="saving" @click="save">{{ editing ? 'Save changes' : 'Create project' }}</ElButton></template>
+    <template #footer><ElButton :disabled="saving" @click="close">取消</ElButton><ElButton type="primary" :loading="saving" @click="save">{{ editing ? '保存修改' : '创建项目' }}</ElButton></template>
   </ElDialog>
 </template>
