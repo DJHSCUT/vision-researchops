@@ -1,7 +1,10 @@
 <script setup>
 import { getStatusLabel } from '../utils/status'
 
-defineProps({ status: { type: String, default: '' } })
+defineProps({
+  status: { type: String, default: '' },
+  label: { type: String, default: '' },
+})
 </script>
 
 <template>
@@ -9,5 +12,5 @@ defineProps({ status: { type: String, default: '' } })
     'status-active': status === 'ACTIVE' || status === 'COMPLETED',
     'status-running': status === 'RUNNING',
     'status-failed': status === 'FAILED',
-  }"><span class="tiny-dot"></span>{{ getStatusLabel(status) }}</span>
+  }"><span class="tiny-dot"></span>{{ label || getStatusLabel(status) }}</span>
 </template>

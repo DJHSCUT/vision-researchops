@@ -61,9 +61,9 @@ class ExperimentRunServiceTests {
 
     @Test
     void completedSetsBothTimesAndExplicitlyClearsError() {
+        run.setStatus("FAILED");
         run.setErrorMessage("旧错误");
         UpdateRunRequest request = statusRequest("COMPLETED");
-        request.setErrorMessage("这条信息应被清空");
         LocalDateTime before = LocalDateTime.now();
 
         service.update(1L, request);
@@ -79,6 +79,8 @@ class ExperimentRunServiceTests {
 
     @Test
     void runningPreservesStartAndClearsPreviousFinish() {
+        run.setStatus("FAILED");
+        run.setErrorMessage("旧错误");
         run.setStartedAt(LocalDateTime.of(2026, 1, 1, 12, 0));
         run.setFinishedAt(LocalDateTime.of(2026, 1, 1, 13, 0));
 
@@ -86,7 +88,7 @@ class ExperimentRunServiceTests {
 
         assertFalse(update.getSqlSet().contains("started_at"));
         assertNull(assignedValue("finished_at"));
-        assertFalse(update.getSqlSet().contains("error_message"));
+        assertNull(assignedValue("error_message"));
     }
 
     @Test
@@ -123,6 +125,8 @@ class ExperimentRunServiceTests {
 
     @Test
     void pendingPreservesTimes() {
+        run.setStatus("FAILED");
+        run.setErrorMessage("旧错误");
         run.setStartedAt(LocalDateTime.of(2026, 1, 1, 12, 0));
         run.setFinishedAt(LocalDateTime.of(2026, 1, 1, 13, 0));
 
@@ -131,10 +135,12 @@ class ExperimentRunServiceTests {
         assertEquals("PENDING", assignedValue("status"));
         assertFalse(update.getSqlSet().contains("started_at"));
         assertFalse(update.getSqlSet().contains("finished_at"));
+        assertNull(assignedValue("error_message"));
     }
 
     @Test
     void errorOnlyPatchLeavesStatusAndTimesUntouched() {
+        run.setStatus("FAILED");
         UpdateRunRequest request = new UpdateRunRequest();
         request.setErrorMessage("修订失败原因");
 
@@ -145,6 +151,72 @@ class ExperimentRunServiceTests {
         assertFalse(update.getSqlSet().contains("started_at"));
         assertFalse(update.getSqlSet().contains("finished_at"));
         assertFalse(update.getSqlSet().contains("run_name"));
+    }
+
+    @Test
+    void nonFailedRunsRejectErrorOnlyPatch() {
+        for (String status : new String[]{"PENDING", "RUNNING", "COMPLETED"}) {
+            run.setStatus(status);
+            UpdateRunRequest request = new UpdateRunRequest();
+            request.setErrorMessage("CUDA out of memory");
+
+            BusinessException error = assertThrows(BusinessException.class,
+                    () -> service.update(1L, request));
+
+            assertEquals(400, error.getCode());
+            assertEquals("仅失败状态可填写失败原因", error.getMessage());
+        }
+        verify(runMapper, never()).update(isNull(), any(Wrapper.class));
+    }
+
+    @Test
+    void nonFailedTargetStatusRejectsSimultaneousError() {
+        run.setStatus("FAILED");
+        run.setErrorMessage("旧错误");
+        for (String status : new String[]{"PENDING", "RUNNING", "COMPLETED"}) {
+            for (String message : new String[]{"CUDA out of memory", ""}) {
+                UpdateRunRequest request = statusRequest(status);
+                request.setErrorMessage(message);
+
+                BusinessException error = assertThrows(BusinessException.class,
+                        () -> service.update(1L, request));
+
+                assertEquals(400, error.getCode());
+                assertEquals("仅失败状态可填写失败原因", error.getMessage());
+            }
+        }
+        verify(runMapper, never()).update(isNull(), any(Wrapper.class));
+    }
+
+    @Test
+    void failedRunNormalizesBlankErrorToNull() {
+        run.setStatus("FAILED");
+        run.setErrorMessage("旧错误");
+        for (String message : new String[]{"", " \n "}) {
+            UpdateRunRequest request = new UpdateRunRequest();
+            request.setErrorMessage(message);
+
+            service.update(1L, request);
+
+            assertNull(assignedValue("error_message"));
+            assertFalse(update.getSqlSet().contains("status"));
+        }
+    }
+
+    @Test
+    void nameOnlyPatchCleansHistoricalNonFailedError() {
+        run.setStatus("COMPLETED");
+        run.setErrorMessage("历史脏数据");
+        UpdateRunRequest request = new UpdateRunRequest();
+        request.setRunName("修订名称");
+
+        service.update(1L, request);
+
+        assertEquals("修订名称", assignedValue("run_name"));
+        assertNull(assignedValue("error_message"));
+        assertFalse(update.getSqlSet().contains("status"));
+        assertFalse(update.getSqlSet().contains("started_at"));
+        assertFalse(update.getSqlSet().contains("finished_at"));
     }
 
     @Test

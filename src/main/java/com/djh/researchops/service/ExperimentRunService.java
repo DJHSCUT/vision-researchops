@@ -78,6 +78,11 @@ public class ExperimentRunService {
 
         ExperimentRun run = getRunOrThrow(id);
 
+        String effectiveStatus = status != null ? status : run.getStatus();
+        if (request.getErrorMessage() != null && !"FAILED".equals(effectiveStatus)) {
+            throw new BusinessException(400, "仅失败状态可填写失败原因");
+        }
+
         // 只更新提供的字段，created_at、updated_at 仍由数据库维护。
         // Wrapper.set 可以显式写入 null，避免实体更新时 null 被忽略。
         LambdaUpdateWrapper<ExperimentRun> update = new LambdaUpdateWrapper<>();
@@ -106,10 +111,13 @@ public class ExperimentRunService {
             // PENDING 不修改已有的开始和结束时间。
         }
 
-        if ("COMPLETED".equals(status)) {
+        // 失败原因只属于 FAILED；非失败状态的更新同时清理历史脏数据。
+        if (!"FAILED".equals(effectiveStatus)) {
             update.set(ExperimentRun::getErrorMessage, null);
         } else if (request.getErrorMessage() != null) {
-            update.set(ExperimentRun::getErrorMessage, request.getErrorMessage());
+            String errorMessage = request.getErrorMessage();
+            update.set(ExperimentRun::getErrorMessage,
+                    errorMessage.isBlank() ? null : errorMessage);
         }
 
         int updatedRows = experimentRunMapper.update(null, update);

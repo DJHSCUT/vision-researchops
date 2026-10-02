@@ -5,6 +5,7 @@ import { deleteTask, getProjectTasks, getTask } from '../api/task'
 import { formatDate } from '../utils/project'
 import StatusBadge from './StatusBadge.vue'
 import TaskDialog from './TaskDialog.vue'
+import ExperimentRuns from './ExperimentRuns.vue'
 
 const props = defineProps({ projectId: { type: [String, Number], required: true } })
 const tasks = ref([])
@@ -98,6 +99,7 @@ onUnmounted(() => { active = false; loadSequence++ })
           <ElButton text :disabled="busyId !== null" @click="openEdit(task)">编辑</ElButton>
           <ElButton text class="delete-button" :disabled="busyId !== null" @click="remove(task)">删除</ElButton>
         </div></div>
+        <ExperimentRuns :task-id="task.id" />
       </article>
     </div>
     <p v-if="!loading && !error && tasks.length" class="collection-count">共 {{ tasks.length }} 项实验任务</p>
