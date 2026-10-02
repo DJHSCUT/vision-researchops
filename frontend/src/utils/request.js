@@ -15,7 +15,7 @@ request.interceptors.response.use(
     if (response.status === 204) return null
     const body = response.data
     if (!body || typeof body.code !== 'number' || !Object.hasOwn(body, 'data')) {
-      return rejectWithMessage(new Error('Invalid API response'), '服务器响应格式异常，请稍后重试。')
+      return rejectWithMessage(new Error('服务器响应格式异常'), '服务器响应格式异常，请稍后重试。')
     }
     if (body.code < 200 || body.code >= 300) {
       return rejectWithMessage(new Error(body.message), body.message || '请求失败，请稍后重试。')
@@ -26,7 +26,7 @@ request.interceptors.response.use(
     const backendMessage = error.response?.data?.message
     const fallback = {
       400: '请求参数错误，请检查输入。',
-      404: '研究项目不存在。',
+      404: '请求的资源不存在。',
       500: '服务暂时不可用，请确认后端及数据库已正常启动。',
       502: '无法连接后端，请确认 Spring Boot 已在 8080 端口启动。',
       503: '服务暂时不可用，请稍后重试。',
