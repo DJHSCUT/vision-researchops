@@ -4,6 +4,7 @@ import com.djh.researchops.controller.AiChatController;
 import com.djh.researchops.exception.BusinessException;
 import com.djh.researchops.exception.GlobalExceptionHandler;
 import com.djh.researchops.service.AiChatService;
+import com.djh.researchops.tool.RunMetricTools;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.client.ChatClient;
@@ -25,6 +26,7 @@ class AiChatServiceTests {
     private ChatClient.ChatClientRequestSpec prompt;
     private ChatClient.CallResponseSpec response;
     private AiChatService service;
+    private RunMetricTools tools;
     private MockMvc mvc;
 
     @BeforeEach
@@ -36,7 +38,8 @@ class AiChatServiceTests {
         when(builder.build()).thenReturn(client);
         when(client.prompt()).thenReturn(prompt);
         when(prompt.call()).thenReturn(response);
-        service = new AiChatService(builder);
+        tools = mock(RunMetricTools.class);
+        service = new AiChatService(builder, tools);
         mvc = MockMvcBuilders.standaloneSetup(new AiChatController(service))
                 .setControllerAdvice(new GlobalExceptionHandler()).build();
     }
@@ -51,6 +54,7 @@ class AiChatServiceTests {
                 .andExpect(jsonPath("$.message").value("success"))
                 .andExpect(jsonPath("$.data.content").value("你好，我是 Vision ResearchOps 科研实验助手。"));
         verify(prompt).user("你好，你能做什么？");
+        verify(prompt).tools(tools);
         verify(prompt).call();
         verify(response).content();
     }
@@ -58,9 +62,9 @@ class AiChatServiceTests {
     @Test
     void systemPromptDeclaresNoBusinessDataAccess() {
         verify(builder).defaultSystem(argThat((String text) ->
-                text.contains("Vision ResearchOps") && text.contains("普通自然语言交流")
-                        && text.contains("不要假装已经查询数据库")
-                        && text.contains("当前尚未调用业务数据工具")));
+                text.contains("Vision ResearchOps") && text.contains("queryRunMetrics")
+                        && text.contains("必须优先使用") && text.contains("不要凭模型记忆")
+                        && text.contains("暂无数据") && text.contains("不要假装已经查询这些数据")));
         verify(builder).build();
     }
 
