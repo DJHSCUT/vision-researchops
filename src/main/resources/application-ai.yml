@@ -1,0 +1,15 @@
+spring:
+  ai:
+    model:
+      chat: openai
+    chat:
+      client:
+        enabled: true
+    openai:
+      api-key: ${LLM_API_KEY}
+      # DeepSeek 使用根地址；SDK 追加 /chat/completions，无需添加 /v1。
+      base-url: ${LLM_BASE_URL:https://api.deepseek.com}
+      timeout: 60s
+      max-retries: 0
+      chat:
+        model: ${LLM_MODEL:deepseek-flash}

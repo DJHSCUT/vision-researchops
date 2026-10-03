@@ -1,6 +1,19 @@
 spring:
   application:
     name: vision-researchops
+  ai:
+    # Starter 默认启用多种模型；普通模式全部关闭，只有 ai Profile 启用 Chat。
+    model:
+      chat: none
+      embedding: none
+      image: none
+      moderation: none
+      audio:
+        speech: none
+        transcription: none
+    chat:
+      client:
+        enabled: false
   datasource:
     url: jdbc:mysql://localhost:3306/vision_researchops?useUnicode=true&characterEncoding=utf8
     username: root
