@@ -7,6 +7,7 @@ import { getRunStatusLabel } from '../utils/run'
 import StatusBadge from './StatusBadge.vue'
 import RunDialog from './RunDialog.vue'
 import ExperimentLogs from './ExperimentLogs.vue'
+import ExperimentMetrics from './ExperimentMetrics.vue'
 
 const props = defineProps({ taskId: { type: [String, Number], required: true } })
 const expanded = ref(false)
@@ -115,6 +116,7 @@ onUnmounted(() => { active = false; loadSequence++ })
             <ElButton text :disabled="busyId !== null" @click="openEdit(run)">编辑</ElButton>
             <ElButton text class="delete-button" :disabled="busyId !== null" @click="remove(run)">删除</ElButton>
           </div>
+          <ExperimentMetrics :run-id="run.id" />
           <ExperimentLogs :run-id="run.id" />
         </article>
       </div>
