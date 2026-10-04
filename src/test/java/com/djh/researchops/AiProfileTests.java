@@ -4,10 +4,13 @@ import com.djh.researchops.controller.AiChatController;
 import com.djh.researchops.service.AiChatService;
 import com.djh.researchops.service.ExperimentMetricService;
 import com.djh.researchops.service.ExperimentLogService;
+import com.djh.researchops.service.ResultArtifactService;
+import com.djh.researchops.tool.RunArtifactTools;
 import com.djh.researchops.tool.RunLogTools;
 import com.djh.researchops.tool.RunMetricTools;
 import com.djh.researchops.vo.ExperimentMetricVO;
 import com.djh.researchops.vo.ExperimentLogVO;
+import com.djh.researchops.vo.ResultArtifactVO;
 import com.djh.researchops.exception.BusinessException;
 import com.sun.net.httpserver.HttpServer;
 import java.net.InetSocketAddress;
@@ -41,7 +44,9 @@ class AiProfileTests {
             .withInitializer(new ConfigDataApplicationContextInitializer())
             .withBean(ExperimentMetricService.class, () -> mock(ExperimentMetricService.class))
             .withBean(ExperimentLogService.class, () -> mock(ExperimentLogService.class))
-            .withUserConfiguration(AutoConfigurationOnly.class, RunMetricTools.class, RunLogTools.class, AiChatService.class, AiChatController.class);
+            .withBean(ResultArtifactService.class, () -> mock(ResultArtifactService.class))
+            .withUserConfiguration(AutoConfigurationOnly.class, RunMetricTools.class, RunLogTools.class,
+                    RunArtifactTools.class, AiChatService.class, AiChatController.class);
 
     @Test
     void ordinaryModeStartsWithoutApiKeyOrAiBeans() {
@@ -52,6 +57,7 @@ class AiProfileTests {
                     assertThat(context).doesNotHaveBean(AiChatController.class);
                     assertThat(context).doesNotHaveBean(RunMetricTools.class);
                     assertThat(context).doesNotHaveBean(RunLogTools.class);
+                    assertThat(context).doesNotHaveBean(RunArtifactTools.class);
                     assertThat(context).doesNotHaveBean(ChatModel.class);
                     assertThat(context).doesNotHaveBean(ChatClient.Builder.class);
                     assertThat(context).doesNotHaveBean(EmbeddingModel.class);
@@ -73,6 +79,7 @@ class AiProfileTests {
                     assertThat(context).hasSingleBean(AiChatController.class);
                     assertThat(context).hasSingleBean(RunMetricTools.class);
                     assertThat(context).hasSingleBean(RunLogTools.class);
+                    assertThat(context).hasSingleBean(RunArtifactTools.class);
                     assertThat(context).doesNotHaveBean(EmbeddingModel.class);
                     assertThat(context).doesNotHaveBean(ImageModel.class);
                     assertThat(context.getEnvironment().getProperty("spring.ai.openai.base-url"))
@@ -171,8 +178,10 @@ class AiProfileTests {
                         assertThat(context.getBean(AiChatService.class).chat("Run 1 的 PSNR 是多少？").getContent())
                                 .isEqualTo("已收到工具查询结果");
                         verify(metricService).getByRunId(1L, null);
+                        verifyNoInteractions(context.getBean(ExperimentLogService.class),
+                                context.getBean(ResultArtifactService.class));
                         assertThat(calls.get()).isEqualTo(2);
-                        assertThat(firstBody.get()).contains("queryRunMetrics", "queryRunLogs", "tools").doesNotContain("31.2345");
+                        assertThat(firstBody.get()).contains("queryRunMetrics", "queryRunLogs", "queryRunArtifacts", "tools").doesNotContain("31.2345");
                         assertThat(secondBody.get()).contains("call_metric", "31.2345", "PSNR", "dB");
                     });
         } finally {
@@ -262,6 +271,114 @@ class AiProfileTests {
                             }
                         }
                         verifyNoInteractions(context.getBean(ExperimentMetricService.class));
+                        verifyNoInteractions(context.getBean(ResultArtifactService.class));
+                    });
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"model", "all", "empty", "missing", "invalid"})
+    void chatClientExecutesArtifactToolAndReturnsStructuredMetadata(String scenario) throws Exception {
+        AtomicInteger calls = new AtomicInteger();
+        AtomicReference<String> firstBody = new AtomicReference<>();
+        AtomicReference<String> secondBody = new AtomicReference<>();
+        String arguments = switch (scenario) {
+            case "all" -> "{\"runId\":1}";
+            case "missing" -> "{\"runId\":99999,\"type\":null}";
+            case "invalid" -> "{\"runId\":1,\"type\":\"VIDEO\"}";
+            default -> "{\"runId\":1,\"type\":\" model \"}";
+        };
+        String encodedArguments = tools.jackson.databind.json.JsonMapper.builder().build().writeValueAsString(arguments);
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/", exchange -> {
+            String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+            String response;
+            if (calls.incrementAndGet() == 1) {
+                firstBody.set(body);
+                response = """
+                        {"id":"chat-artifact","object":"chat.completion","created":0,"model":"deepseek-flash",
+                        "choices":[{"index":0,"message":{"role":"assistant","content":null,
+                        "tool_calls":[{"id":"call_artifact","type":"function","function":{
+                        "name":"queryRunArtifacts","arguments":%s}}]},"finish_reason":"tool_calls"}]}
+                        """.formatted(encodedArguments);
+            } else {
+                secondBody.set(body);
+                response = """
+                        {"id":"chat-answer","object":"chat.completion","created":0,"model":"deepseek-flash",
+                        "choices":[{"index":0,"message":{"role":"assistant","content":"已收到产物查询结果"},"finish_reason":"stop"}]}
+                        """;
+            }
+            byte[] bytes = response.getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().set("Content-Type", "application/json; charset=utf-8");
+            exchange.sendResponseHeaders(200, bytes.length);
+            try (var output = exchange.getResponseBody()) {
+                output.write(bytes);
+            }
+        });
+        server.start();
+        try {
+            runner.withPropertyValues("spring.profiles.active=ai",
+                            "LLM_API_KEY=test-placeholder-not-a-real-key", "LLM_MODEL=deepseek-flash",
+                            "LLM_BASE_URL=http://127.0.0.1:" + server.getAddress().getPort())
+                    .run(context -> {
+                        assertThat(context).hasNotFailed();
+                        ResultArtifactService artifactService = context.getBean(ResultArtifactService.class);
+                        String type = "all".equals(scenario) ? null : "MODEL";
+                        if ("missing".equals(scenario)) {
+                            when(artifactService.getByRunId(99999L, null))
+                                    .thenThrow(new BusinessException(404, "实验运行不存在"));
+                        } else if (!"invalid".equals(scenario)) {
+                            ResultArtifactVO artifact = new ResultArtifactVO();
+                            artifact.setId(7L);
+                            artifact.setRunId(1L);
+                            artifact.setArtifactName("测试模型");
+                            artifact.setArtifactType("MODEL");
+                            artifact.setStoragePath("/test-only/nonexistent/model.bin");
+                            artifact.setFileSizeBytes(5_000_000_123L);
+                            artifact.setCreatedAt(LocalDateTime.of(2026, 1, 2, 3, 4));
+                            when(artifactService.getByRunId(1L, type))
+                                    .thenReturn("empty".equals(scenario) ? List.of() : List.of(artifact));
+                        }
+                        assertThat(context.getBean(AiChatService.class).chat("Run 1 有哪些模型文件？").getContent())
+                                .isEqualTo("已收到产物查询结果");
+                        assertThat(calls.get()).isEqualTo(2);
+                        assertThat(firstBody.get()).contains("queryRunMetrics", "queryRunLogs", "queryRunArtifacts");
+                        var mapper = tools.jackson.databind.json.JsonMapper.builder().build();
+                        var messages = mapper.readTree(secondBody.get()).get("messages");
+                        var toolMessage = java.util.stream.StreamSupport.stream(messages.spliterator(), false)
+                                .filter(message -> "tool".equals(message.get("role").asString()))
+                                .findFirst().orElseThrow();
+                        var result = mapper.readTree(toolMessage.get("content").asString());
+                        assertThat(toolMessage.get("tool_call_id").asString()).isEqualTo("call_artifact");
+                        switch (scenario) {
+                            case "missing" -> {
+                                verify(artifactService).getByRunId(99999L, null);
+                                assertThat(result.get("success").asBoolean()).isFalse();
+                                assertThat(result.get("message").asString()).isEqualTo("实验运行不存在");
+                            }
+                            case "invalid" -> {
+                                verifyNoInteractions(artifactService);
+                                assertThat(result.get("success").asBoolean()).isFalse();
+                                assertThat(result.get("message").asString()).isEqualTo("实验产物类型不合法");
+                            }
+                            case "empty" -> {
+                                verify(artifactService).getByRunId(1L, type);
+                                assertThat(result.get("success").asBoolean()).isTrue();
+                                assertThat(result.get("artifacts").isEmpty()).isTrue();
+                                assertThat(result.get("message").asString()).isEqualTo("当前实验运行暂无 MODEL 类型实验产物");
+                            }
+                            default -> {
+                                verify(artifactService).getByRunId(1L, type);
+                                assertThat(result.get("success").asBoolean()).isTrue();
+                                var artifact = result.get("artifacts").get(0);
+                                assertThat(artifact.get("storagePath").asString()).isEqualTo("/test-only/nonexistent/model.bin");
+                                assertThat(artifact.get("fileSizeBytes").asLong()).isEqualTo(5_000_000_123L);
+                            }
+                        }
+                        verifyNoInteractions(context.getBean(ExperimentMetricService.class),
+                                context.getBean(ExperimentLogService.class));
                     });
         } finally {
             server.stop(0);
