@@ -40,12 +40,22 @@ public class ExperimentRunService {
     }
 
     public List<ExperimentRunVO> getByTaskId(Long taskId) {
+        return getByTaskId(taskId, null);
+    }
+
+    public List<ExperimentRunVO> getByTaskId(Long taskId, String status) {
 
         checkTaskExists(taskId);
+        if (status != null && !List.of("PENDING", "RUNNING", "COMPLETED", "FAILED").contains(status)) {
+            throw new BusinessException(400, "实验运行状态不合法");
+        }
 
         LambdaQueryWrapper<ExperimentRun> query = new LambdaQueryWrapper<>();
-        query.eq(ExperimentRun::getTaskId, taskId)
-                .orderByDesc(ExperimentRun::getId);
+        query.eq(ExperimentRun::getTaskId, taskId);
+        if (status != null) {
+            query.eq(ExperimentRun::getStatus, status);
+        }
+        query.orderByDesc(ExperimentRun::getId);
 
         List<ExperimentRun> runs = experimentRunMapper.selectList(query);
         List<ExperimentRunVO> result = new ArrayList<>();

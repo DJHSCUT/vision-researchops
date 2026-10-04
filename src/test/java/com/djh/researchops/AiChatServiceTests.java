@@ -7,6 +7,7 @@ import com.djh.researchops.service.AiChatService;
 import com.djh.researchops.tool.RunMetricTools;
 import com.djh.researchops.tool.RunLogTools;
 import com.djh.researchops.tool.RunArtifactTools;
+import com.djh.researchops.tool.TaskRunTools;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.client.ChatClient;
@@ -31,6 +32,7 @@ class AiChatServiceTests {
     private RunMetricTools tools;
     private RunLogTools logTools;
     private RunArtifactTools artifactTools;
+    private TaskRunTools taskRunTools;
     private MockMvc mvc;
 
     @BeforeEach
@@ -45,7 +47,8 @@ class AiChatServiceTests {
         tools = mock(RunMetricTools.class);
         logTools = mock(RunLogTools.class);
         artifactTools = mock(RunArtifactTools.class);
-        service = new AiChatService(builder, tools, logTools, artifactTools);
+        taskRunTools = mock(TaskRunTools.class);
+        service = new AiChatService(builder, tools, logTools, artifactTools, taskRunTools);
         mvc = MockMvcBuilders.standaloneSetup(new AiChatController(service))
                 .setControllerAdvice(new GlobalExceptionHandler()).build();
     }
@@ -60,13 +63,13 @@ class AiChatServiceTests {
                 .andExpect(jsonPath("$.message").value("success"))
                 .andExpect(jsonPath("$.data.content").value("你好，我是 Vision ResearchOps 科研实验助手。"));
         verify(prompt).user("你好，你能做什么？");
-        verify(prompt).tools(tools, logTools, artifactTools);
+        verify(prompt).tools(tools, logTools, artifactTools, taskRunTools);
         verify(prompt).call();
         verify(response).content();
     }
 
     @Test
-    void systemPromptDistinguishesMetricsLogsArtifactsAndGeneralKnowledge() {
+    void systemPromptDistinguishesTaskRunsAndRunToolsFromGeneralKnowledge() {
         verify(builder).defaultSystem(argThat((String text) ->
                 text.contains("Vision ResearchOps") && text.contains("queryRunMetrics")
                         && text.contains("必须优先使用") && text.contains("不要凭模型记忆")
@@ -83,6 +86,12 @@ class AiChatServiceTests {
                         && text.contains("文件名、路径、大小或产物类型")
                         && text.contains("PLY 文件是什么") && text.contains("checkpoint 是什么")
                         && text.contains("不要编造文件")
+                        && text.contains("queryTaskRuns") && text.contains("status=FAILED")
+                        && text.contains("status=RUNNING") && text.contains("status=COMPLETED")
+                        && text.contains("status=PENDING") && text.contains("status 传 null")
+                        && text.contains("FAILED 状态是什么意思") && text.contains("Experiment Run 是什么")
+                        && text.contains("不要把 Task ID 当成 Run ID")
+                        && text.contains("不要自动串联工具比较")
                         && text.contains("暂无数据") && text.contains("不要假装已经查询这些数据")));
         verify(builder).build();
     }

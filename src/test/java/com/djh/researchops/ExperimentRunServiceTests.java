@@ -2,11 +2,13 @@ package com.djh.researchops;
 
 import com.baomidou.mybatisplus.core.MybatisConfiguration;
 import com.baomidou.mybatisplus.core.conditions.Wrapper;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.djh.researchops.dto.CreateRunRequest;
 import com.djh.researchops.dto.UpdateRunRequest;
 import com.djh.researchops.entity.ExperimentRun;
+import com.djh.researchops.entity.ExperimentTask;
 import com.djh.researchops.exception.BusinessException;
 import com.djh.researchops.mapper.ExperimentRunMapper;
 import com.djh.researchops.mapper.ExperimentTaskMapper;
@@ -16,8 +18,12 @@ import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
+import org.mockito.ArgumentCaptor;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -277,6 +283,90 @@ class ExperimentRunServiceTests {
             patch.setErrorMessage("错".repeat(1001));
             assertFalse(validator.validate(patch).isEmpty());
         }
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"PENDING", "RUNNING", "COMPLETED", "FAILED"})
+    void taskQueryFiltersByStatusAndPreservesDescendingIdOrder(String status) {
+        when(taskMapper.selectById(2L)).thenReturn(new ExperimentTask());
+        run.setStatus(status);
+        run.setStartedAt(LocalDateTime.of(2026, 1, 2, 3, 4));
+        run.setFinishedAt(LocalDateTime.of(2026, 1, 2, 5, 6));
+        run.setErrorMessage("测试信息");
+        when(runMapper.selectList(any(Wrapper.class))).thenReturn(List.of(run));
+
+        var result = service.getByTaskId(2L, status);
+
+        var query = capturedQuery();
+        assertTrue(query.getSqlSegment().contains("task_id ="));
+        assertTrue(query.getSqlSegment().contains("status ="));
+        assertTrue(query.getSqlSegment().contains("ORDER BY id DESC"));
+        assertEquals(2, query.getParamNameValuePairs().size());
+        assertTrue(query.getParamNameValuePairs().containsValue(2L));
+        assertTrue(query.getParamNameValuePairs().containsValue(status));
+        assertEquals(status, result.get(0).getStatus());
+        assertEquals(run.getTaskId(), result.get(0).getTaskId());
+        assertEquals(run.getStartedAt(), result.get(0).getStartedAt());
+        assertEquals(run.getFinishedAt(), result.get(0).getFinishedAt());
+        assertEquals(run.getErrorMessage(), result.get(0).getErrorMessage());
+        verify(taskMapper).selectById(2L);
+    }
+
+    @Test
+    void legacyTaskQueryStillReturnsAllRunsInServiceOrder() {
+        when(taskMapper.selectById(2L)).thenReturn(new ExperimentTask());
+        ExperimentRun newer = new ExperimentRun();
+        newer.setId(9L);
+        newer.setTaskId(2L);
+        newer.setStatus("FAILED");
+        when(runMapper.selectList(any(Wrapper.class))).thenReturn(List.of(newer, run));
+
+        var result = service.getByTaskId(2L);
+
+        assertEquals(List.of(9L, 1L), result.stream().map(com.djh.researchops.vo.ExperimentRunVO::getId).toList());
+        var query = capturedQuery();
+        assertFalse(query.getSqlSegment().contains("status ="));
+        assertTrue(query.getSqlSegment().contains("ORDER BY id DESC"));
+        assertEquals(List.of(2L), List.copyOf(query.getParamNameValuePairs().values()));
+    }
+
+    @Test
+    void taskQueryWithNullStatusDoesNotFilterStatus() {
+        when(taskMapper.selectById(2L)).thenReturn(new ExperimentTask());
+        when(runMapper.selectList(any(Wrapper.class))).thenReturn(List.of());
+        assertTrue(service.getByTaskId(2L, null).isEmpty());
+        var query = capturedQuery();
+        assertFalse(query.getSqlSegment().contains("status ="));
+        assertEquals(List.of(2L), List.copyOf(query.getParamNameValuePairs().values()));
+    }
+
+    @Test
+    void taskQueryValidatesTaskBeforeQueryingRuns() {
+        for (String status : new String[]{null, "FAILED"}) {
+            BusinessException failure = assertThrows(BusinessException.class,
+                    () -> service.getByTaskId(99999L, status));
+            assertEquals(404, failure.getCode());
+            assertEquals("实验任务不存在", failure.getMessage());
+        }
+        verifyNoInteractions(runMapper);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"SUCCESS", "ERROR", "STOPPED", "", "failed", " FAILED "})
+    void taskQueryRejectsInvalidStatusBeforeRunQuery(String status) {
+        when(taskMapper.selectById(2L)).thenReturn(new ExperimentTask());
+        BusinessException failure = assertThrows(BusinessException.class,
+                () -> service.getByTaskId(2L, status));
+        assertEquals(400, failure.getCode());
+        assertEquals("实验运行状态不合法", failure.getMessage());
+        verifyNoInteractions(runMapper);
+    }
+
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private LambdaQueryWrapper<ExperimentRun> capturedQuery() {
+        ArgumentCaptor<LambdaQueryWrapper<ExperimentRun>> captor = ArgumentCaptor.forClass((Class) LambdaQueryWrapper.class);
+        verify(runMapper).selectList(captor.capture());
+        return captor.getValue();
     }
 
     private UpdateRunRequest statusRequest(String status) {

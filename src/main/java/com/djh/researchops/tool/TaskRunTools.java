@@ -1,0 +1,55 @@
+package com.djh.researchops.tool;
+
+import com.djh.researchops.exception.BusinessException;
+import com.djh.researchops.service.ExperimentRunService;
+import com.djh.researchops.vo.ExperimentRunVO;
+import com.djh.researchops.vo.TaskRunsToolResult;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.ai.tool.annotation.Tool;
+import org.springframework.ai.tool.annotation.ToolParam;
+import org.springframework.context.annotation.Profile;
+import org.springframework.stereotype.Component;
+
+import java.util.List;
+import java.util.Locale;
+
+@Slf4j
+@Component
+@Profile("ai")
+@RequiredArgsConstructor
+public class TaskRunTools {
+
+    private final ExperimentRunService experimentRunService;
+
+    @Tool(name = "queryTaskRuns", description = "查询指定实验任务 Task 下的真实实验运行记录。当用户询问某个 Task 跑过哪些 Run、有哪些实验运行、是否存在失败运行、正在运行的实验、已完成实验或运行状态时使用。可以通过 status 筛选运行状态。不要用于查询某个 Run 的指标、日志或实验产物。一般知识问题不需要调用该工具。")
+    public TaskRunsToolResult queryTaskRuns(
+            @ToolParam(description = "实验任务 Task 的数据库 ID，必须为正整数，例如用户说 Task 1 时传入 1") Long taskId,
+            @ToolParam(required = false, description = "可选实验运行状态，只允许 PENDING、RUNNING、COMPLETED、FAILED。用户询问失败运行时传 FAILED，正在运行时传 RUNNING，已完成时传 COMPLETED，等待运行时传 PENDING；未明确指定状态时可以传 null") String status) {
+        String normalizedStatus = status == null ? null : status.trim().toUpperCase(Locale.ROOT);
+        log.info("queryTaskRuns invoked, taskId={}, status={}", taskId, normalizedStatus);
+        if (taskId == null || taskId <= 0) {
+            return new TaskRunsToolResult(taskId, normalizedStatus, false, "实验任务 ID 必须为正整数", List.of());
+        }
+        if (normalizedStatus != null && !List.of("PENDING", "RUNNING", "COMPLETED", "FAILED").contains(normalizedStatus)) {
+            return new TaskRunsToolResult(taskId, normalizedStatus, false, "实验运行状态不合法", List.of());
+        }
+
+        List<ExperimentRunVO> runs;
+        try {
+            runs = experimentRunService.getByTaskId(taskId, normalizedStatus);
+        } catch (BusinessException failure) {
+            // 只转换 Service 明确表示的 Task 不存在；其他故障继续向外抛出。
+            if (failure.getCode() != 404 || !"实验任务不存在".equals(failure.getMessage())) {
+                throw failure;
+            }
+            log.info("queryTaskRuns task not found, taskId={}, status={}", taskId, normalizedStatus);
+            return new TaskRunsToolResult(taskId, normalizedStatus, false, "实验任务不存在", List.of());
+        }
+        log.info("queryTaskRuns completed, taskId={}, status={}, runCount={}", taskId, normalizedStatus, runs.size());
+        String message = runs.isEmpty()
+                ? (normalizedStatus == null ? "当前实验任务暂无运行记录" : "当前实验任务暂无 " + normalizedStatus + " 状态运行记录")
+                : "查询成功";
+        return new TaskRunsToolResult(taskId, normalizedStatus, true, message, runs);
+    }
+}

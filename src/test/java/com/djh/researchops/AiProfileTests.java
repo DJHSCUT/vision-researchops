@@ -6,11 +6,14 @@ import com.djh.researchops.service.ExperimentMetricService;
 import com.djh.researchops.service.ExperimentLogService;
 import com.djh.researchops.service.ResultArtifactService;
 import com.djh.researchops.tool.RunArtifactTools;
+import com.djh.researchops.tool.TaskRunTools;
+import com.djh.researchops.service.ExperimentRunService;
 import com.djh.researchops.tool.RunLogTools;
 import com.djh.researchops.tool.RunMetricTools;
 import com.djh.researchops.vo.ExperimentMetricVO;
 import com.djh.researchops.vo.ExperimentLogVO;
 import com.djh.researchops.vo.ResultArtifactVO;
+import com.djh.researchops.vo.ExperimentRunVO;
 import com.djh.researchops.exception.BusinessException;
 import com.sun.net.httpserver.HttpServer;
 import java.net.InetSocketAddress;
@@ -45,8 +48,9 @@ class AiProfileTests {
             .withBean(ExperimentMetricService.class, () -> mock(ExperimentMetricService.class))
             .withBean(ExperimentLogService.class, () -> mock(ExperimentLogService.class))
             .withBean(ResultArtifactService.class, () -> mock(ResultArtifactService.class))
+            .withBean(ExperimentRunService.class, () -> mock(ExperimentRunService.class))
             .withUserConfiguration(AutoConfigurationOnly.class, RunMetricTools.class, RunLogTools.class,
-                    RunArtifactTools.class, AiChatService.class, AiChatController.class);
+                    RunArtifactTools.class, TaskRunTools.class, AiChatService.class, AiChatController.class);
 
     @Test
     void ordinaryModeStartsWithoutApiKeyOrAiBeans() {
@@ -58,6 +62,7 @@ class AiProfileTests {
                     assertThat(context).doesNotHaveBean(RunMetricTools.class);
                     assertThat(context).doesNotHaveBean(RunLogTools.class);
                     assertThat(context).doesNotHaveBean(RunArtifactTools.class);
+                    assertThat(context).doesNotHaveBean(TaskRunTools.class);
                     assertThat(context).doesNotHaveBean(ChatModel.class);
                     assertThat(context).doesNotHaveBean(ChatClient.Builder.class);
                     assertThat(context).doesNotHaveBean(EmbeddingModel.class);
@@ -80,6 +85,7 @@ class AiProfileTests {
                     assertThat(context).hasSingleBean(RunMetricTools.class);
                     assertThat(context).hasSingleBean(RunLogTools.class);
                     assertThat(context).hasSingleBean(RunArtifactTools.class);
+                    assertThat(context).hasSingleBean(TaskRunTools.class);
                     assertThat(context).doesNotHaveBean(EmbeddingModel.class);
                     assertThat(context).doesNotHaveBean(ImageModel.class);
                     assertThat(context.getEnvironment().getProperty("spring.ai.openai.base-url"))
@@ -181,7 +187,7 @@ class AiProfileTests {
                         verifyNoInteractions(context.getBean(ExperimentLogService.class),
                                 context.getBean(ResultArtifactService.class));
                         assertThat(calls.get()).isEqualTo(2);
-                        assertThat(firstBody.get()).contains("queryRunMetrics", "queryRunLogs", "queryRunArtifacts", "tools").doesNotContain("31.2345");
+                        assertThat(firstBody.get()).contains("queryRunMetrics", "queryRunLogs", "queryRunArtifacts", "queryTaskRuns", "tools").doesNotContain("31.2345");
                         assertThat(secondBody.get()).contains("call_metric", "31.2345", "PSNR", "dB");
                     });
         } finally {
@@ -344,7 +350,7 @@ class AiProfileTests {
                         assertThat(context.getBean(AiChatService.class).chat("Run 1 有哪些模型文件？").getContent())
                                 .isEqualTo("已收到产物查询结果");
                         assertThat(calls.get()).isEqualTo(2);
-                        assertThat(firstBody.get()).contains("queryRunMetrics", "queryRunLogs", "queryRunArtifacts");
+                        assertThat(firstBody.get()).contains("queryRunMetrics", "queryRunLogs", "queryRunArtifacts", "queryTaskRuns");
                         var mapper = tools.jackson.databind.json.JsonMapper.builder().build();
                         var messages = mapper.readTree(secondBody.get()).get("messages");
                         var toolMessage = java.util.stream.StreamSupport.stream(messages.spliterator(), false)
@@ -379,6 +385,110 @@ class AiProfileTests {
                         }
                         verifyNoInteractions(context.getBean(ExperimentMetricService.class),
                                 context.getBean(ExperimentLogService.class));
+                    });
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"all", "failed", "empty", "missing", "invalid"})
+    void chatClientExecutesTaskRunToolWithoutChainingRunTools(String scenario) throws Exception {
+        AtomicInteger calls = new AtomicInteger();
+        AtomicReference<String> firstBody = new AtomicReference<>();
+        AtomicReference<String> secondBody = new AtomicReference<>();
+        var mapper = tools.jackson.databind.json.JsonMapper.builder().build();
+        String arguments = switch (scenario) {
+            case "all" -> "{\"taskId\":1}";
+            case "missing" -> "{\"taskId\":99999,\"status\":null}";
+            case "invalid" -> "{\"taskId\":1,\"status\":\"SUCCESS\"}";
+            default -> "{\"taskId\":1,\"status\":\" failed \"}";
+        };
+        String encodedArguments = mapper.writeValueAsString(arguments);
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/", exchange -> {
+            String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+            String response;
+            if (calls.incrementAndGet() == 1) {
+                firstBody.set(body);
+                response = """
+                        {"id":"chat-task","object":"chat.completion","created":0,"model":"deepseek-flash",
+                        "choices":[{"index":0,"message":{"role":"assistant","content":null,
+                        "tool_calls":[{"id":"call_task","type":"function","function":{
+                        "name":"queryTaskRuns","arguments":%s}}]},"finish_reason":"tool_calls"}]}
+                        """.formatted(encodedArguments);
+            } else {
+                secondBody.set(body);
+                response = """
+                        {"id":"chat-answer","object":"chat.completion","created":0,"model":"deepseek-flash",
+                        "choices":[{"index":0,"message":{"role":"assistant","content":"已收到任务运行查询结果"},"finish_reason":"stop"}]}
+                        """;
+            }
+            byte[] bytes = response.getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().set("Content-Type", "application/json; charset=utf-8");
+            exchange.sendResponseHeaders(200, bytes.length);
+            try (var output = exchange.getResponseBody()) {
+                output.write(bytes);
+            }
+        });
+        server.start();
+        try {
+            runner.withPropertyValues("spring.profiles.active=ai", "LLM_API_KEY=test-placeholder-not-a-real-key",
+                            "LLM_MODEL=deepseek-flash", "LLM_BASE_URL=http://127.0.0.1:" + server.getAddress().getPort())
+                    .run(context -> {
+                        assertThat(context).hasNotFailed();
+                        ExperimentRunService runService = context.getBean(ExperimentRunService.class);
+                        String status = "all".equals(scenario) ? null : "FAILED";
+                        if ("missing".equals(scenario)) {
+                            when(runService.getByTaskId(99999L, null))
+                                    .thenThrow(new BusinessException(404, "实验任务不存在"));
+                        } else if (!"invalid".equals(scenario)) {
+                            ExperimentRunVO run = new ExperimentRunVO();
+                            run.setId(7L);
+                            run.setTaskId(1L);
+                            run.setStatus("FAILED");
+                            run.setErrorMessage("测试失败信息");
+                            run.setStartedAt(LocalDateTime.of(2026, 1, 2, 3, 4));
+                            run.setFinishedAt(LocalDateTime.of(2026, 1, 2, 5, 6));
+                            when(runService.getByTaskId(1L, status))
+                                    .thenReturn("empty".equals(scenario) ? List.of() : List.of(run));
+                        }
+                        String question = "all".equals(scenario) ? "Task 1 有哪些 Run？" : "Task 1 有哪些失败的 Run？";
+                        assertThat(context.getBean(AiChatService.class).chat(question).getContent())
+                                .isEqualTo("已收到任务运行查询结果");
+                        assertThat(calls.get()).isEqualTo(2);
+                        assertThat(firstBody.get()).contains("queryTaskRuns", "queryRunMetrics", "queryRunLogs", "queryRunArtifacts");
+                        var messages = mapper.readTree(secondBody.get()).get("messages");
+                        var toolMessage = java.util.stream.StreamSupport.stream(messages.spliterator(), false)
+                                .filter(message -> "tool".equals(message.get("role").asString())).findFirst().orElseThrow();
+                        assertThat(toolMessage.get("tool_call_id").asString()).isEqualTo("call_task");
+                        var result = mapper.readTree(toolMessage.get("content").asString());
+                        switch (scenario) {
+                            case "missing" -> {
+                                verify(runService).getByTaskId(99999L, null);
+                                assertThat(result.get("success").asBoolean()).isFalse();
+                                assertThat(result.get("message").asString()).isEqualTo("实验任务不存在");
+                            }
+                            case "invalid" -> {
+                                verifyNoInteractions(runService);
+                                assertThat(result.get("success").asBoolean()).isFalse();
+                                assertThat(result.get("message").asString()).isEqualTo("实验运行状态不合法");
+                            }
+                            case "empty" -> {
+                                verify(runService).getByTaskId(1L, status);
+                                assertThat(result.get("success").asBoolean()).isTrue();
+                                assertThat(result.get("runs").isEmpty()).isTrue();
+                                assertThat(result.get("message").asString()).isEqualTo("当前实验任务暂无 FAILED 状态运行记录");
+                            }
+                            default -> {
+                                verify(runService).getByTaskId(1L, status);
+                                assertThat(result.get("success").asBoolean()).isTrue();
+                                assertThat(result.get("runs").get(0).get("status").asString()).isEqualTo("FAILED");
+                                assertThat(result.get("runs").get(0).get("errorMessage").asString()).isEqualTo("测试失败信息");
+                            }
+                        }
+                        verifyNoInteractions(context.getBean(ExperimentMetricService.class),
+                                context.getBean(ExperimentLogService.class), context.getBean(ResultArtifactService.class));
                     });
         } finally {
             server.stop(0);
