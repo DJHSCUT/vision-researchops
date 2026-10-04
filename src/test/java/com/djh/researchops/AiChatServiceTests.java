@@ -5,6 +5,7 @@ import com.djh.researchops.exception.BusinessException;
 import com.djh.researchops.exception.GlobalExceptionHandler;
 import com.djh.researchops.service.AiChatService;
 import com.djh.researchops.tool.RunMetricTools;
+import com.djh.researchops.tool.RunLogTools;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.client.ChatClient;
@@ -27,6 +28,7 @@ class AiChatServiceTests {
     private ChatClient.CallResponseSpec response;
     private AiChatService service;
     private RunMetricTools tools;
+    private RunLogTools logTools;
     private MockMvc mvc;
 
     @BeforeEach
@@ -39,7 +41,8 @@ class AiChatServiceTests {
         when(client.prompt()).thenReturn(prompt);
         when(prompt.call()).thenReturn(response);
         tools = mock(RunMetricTools.class);
-        service = new AiChatService(builder, tools);
+        logTools = mock(RunLogTools.class);
+        service = new AiChatService(builder, tools, logTools);
         mvc = MockMvcBuilders.standaloneSetup(new AiChatController(service))
                 .setControllerAdvice(new GlobalExceptionHandler()).build();
     }
@@ -54,16 +57,22 @@ class AiChatServiceTests {
                 .andExpect(jsonPath("$.message").value("success"))
                 .andExpect(jsonPath("$.data.content").value("你好，我是 Vision ResearchOps 科研实验助手。"));
         verify(prompt).user("你好，你能做什么？");
-        verify(prompt).tools(tools);
+        verify(prompt).tools(tools, logTools);
         verify(prompt).call();
         verify(response).content();
     }
 
     @Test
-    void systemPromptDeclaresNoBusinessDataAccess() {
+    void systemPromptDistinguishesMetricsLogsAndGeneralKnowledge() {
         verify(builder).defaultSystem(argThat((String text) ->
                 text.contains("Vision ResearchOps") && text.contains("queryRunMetrics")
                         && text.contains("必须优先使用") && text.contains("不要凭模型记忆")
+                        && text.contains("queryRunLogs") && text.contains("level=ERROR")
+                        && text.contains("level=WARN") && text.contains("level=INFO")
+                        && text.contains("level 传 null") && text.contains("一般知识问题")
+                        && text.contains("不要调用 queryRunMetrics 代替日志查询")
+                        && text.contains("不要调用 queryRunLogs 代替指标查询")
+                        && text.contains("不要编造失败原因")
                         && text.contains("暂无数据") && text.contains("不要假装已经查询这些数据")));
         verify(builder).build();
     }
