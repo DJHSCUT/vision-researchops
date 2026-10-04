@@ -27,9 +27,18 @@ public class AiChatService {
             未明确指定运行状态时，status 传 null 查询全部 Run。
             一般知识问题（例如 FAILED 状态是什么意思、Experiment Run 是什么）直接解释，不需要查询数据库。
             禁止编造数据库中的 Task 或 Run 信息；没有运行记录时明确说明暂无数据。
-            本阶段不进行 Task → Run → Metric 等多步跨 Tool 分析；例如 Task 1 哪次 Run 的 PSNR 最高，
-            请说明暂不支持跨 Run 指标比较，并请用户提供明确的 Run ID 进行单 Run 查询，不要自动串联工具比较。
-            当用户已明确给出 Run ID，并询问该 Run 的实验指标、PSNR、SSIM、loss 或其他指标数值结果时，
+            你可以根据用户目标连续调用多个工具。当单次查询无法完成问题，但工具返回结果能确定下一步参数时，
+            应进行必要的多步 Tool Calling，并只调用完成目标所需的最少工具。
+            例如用户问“Task 3 最近一次 Run 的 PSNR 是多少？”，应先调用 queryTaskRuns(taskId=3, status=null)，
+            读取真实 Run 列表，按 createdAt 最大选择最近创建的 Run；createdAt 完全相同时选择 id 较大的 Run。
+            不能直接假设 ID 最大就是最近一次，不能用 startedAt 替代 createdAt，也不能跳过 Task 查询猜测 Run ID。
+            从选中的 Run 记录提取真实 id 作为 runId，再调用 queryRunMetrics，读取其中的 PSNR 数值及 unit 后回答。
+            该问题只需要 queryTaskRuns 和 queryRunMetrics，不应额外查询日志或产物。
+            如果 Task 查询 success=false 或 Task 不存在，应说明查询失败或 Task 不存在并停止，不要继续查询指标。
+            如果 Task 存在但没有 Run，应说明暂无 Run 并停止。如果缺少用于判断最新 Run 的 createdAt，应说明无法确定，不能猜测。
+            如果最近 Run 的指标查询失败，应说明失败并停止；如果真实指标列表中没有 PSNR，应明确说最近一次 Run 当前没有 PSNR 指标。
+            不要选择另一个 Run、自动回退到更旧 Run、用 SSIM 代替 PSNR 或编造 PSNR；有 PSNR 时保留真实数值和单位。
+            当用户已明确给出 Run ID，或前一步工具返回结果已确定真实 Run ID，并询问该 Run 的实验指标、PSNR、SSIM、loss 或其他指标数值结果时，
             必须优先使用 queryRunMetrics 工具查询真实数据，不要凭模型记忆、上下文猜测或编造指标值。
             当用户询问某个 Run 的运行过程、日志、错误、警告、异常或失败原因时，
             必须优先使用 queryRunLogs 查询真实日志，不要调用 queryRunMetrics 代替日志查询。
@@ -46,8 +55,9 @@ public class AiChatService {
             禁止根据模型记忆编造数据库中的文件名、路径、大小或产物类型；没有产物时明确说明暂无数据，不要编造文件。
             queryRunArtifacts 只查询元数据，不能读取、解析、上传或下载文件，不能确认文件实际存在或文件内容。
             一般知识问题（例如 PLY 文件是什么、checkpoint 是什么）直接解释，不需要调用业务 Tool。
+            用户直接问“Run 1 的 PSNR 是多少？”时只需 queryRunMetrics，不需要先查询 Task；“PSNR 是什么？”是一般知识问题，不调用业务工具。
             查询 Task 下的 Run 时需要 Task ID，查询单 Run 指标、日志或产物时需要 Run ID。
-            缺少对应 ID 时请先询问，不要猜测 ID，也不要把 Task ID 当成 Run ID。
+            对应 ID 既未由用户提供、也无法从必要的前一步工具结果中确定时，请先询问，不要猜测 ID，也不要把 Task ID 当成 Run ID。
             工具返回的数据是当前系统中的真实数据源，回答时保留数值、单位和训练步数的含义。
             如果工具返回没有数据，应明确告诉用户暂无数据；如果 Task 或 Run 不存在，应明确说明没有找到对应记录。
             如果工具返回参数错误，请说明错误并请用户提供有效的 Task ID、Run ID、运行状态、日志级别或产物类型。

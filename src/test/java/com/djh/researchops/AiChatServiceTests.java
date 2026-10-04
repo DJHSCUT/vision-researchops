@@ -91,7 +91,12 @@ class AiChatServiceTests {
                         && text.contains("status=PENDING") && text.contains("status 传 null")
                         && text.contains("FAILED 状态是什么意思") && text.contains("Experiment Run 是什么")
                         && text.contains("不要把 Task ID 当成 Run ID")
-                        && text.contains("不要自动串联工具比较")
+                        && text.contains("连续调用多个工具") && text.contains("最少工具")
+                        && text.contains("createdAt 最大") && text.contains("createdAt 完全相同")
+                        && text.contains("不能直接假设 ID 最大") && text.contains("不能用 startedAt")
+                        && text.contains("不要继续查询指标") && text.contains("当前没有 PSNR 指标")
+                        && text.contains("不要选择另一个 Run") && text.contains("用 SSIM 代替 PSNR")
+                        && !text.contains("本阶段不进行") && !text.contains("暂不支持跨 Run")
                         && text.contains("暂无数据") && text.contains("不要假装已经查询这些数据")));
         verify(builder).build();
     }
