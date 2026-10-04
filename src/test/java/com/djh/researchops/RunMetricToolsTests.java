@@ -5,6 +5,9 @@ import com.djh.researchops.service.ExperimentMetricService;
 import com.djh.researchops.tool.RunMetricTools;
 import com.djh.researchops.vo.ExperimentMetricVO;
 import com.djh.researchops.vo.RunMetricsToolResult;
+import com.djh.researchops.service.ExperimentRunService;
+import com.djh.researchops.vo.ExperimentRunVO;
+import com.djh.researchops.vo.MetricToolItem;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -18,53 +21,59 @@ class RunMetricToolsTests {
 
     private ExperimentMetricService service;
     private RunMetricTools tools;
+    private ExperimentRunService resolver;
 
     @BeforeEach
     void setUp() {
         service = mock(ExperimentMetricService.class);
-        tools = new RunMetricTools(service);
+        resolver = mock(ExperimentRunService.class);
+        ExperimentRunVO resolved = new ExperimentRunVO();
+        resolved.setId(101L);
+        resolved.setRunCode("R-1");
+        when(resolver.getByRunCode("R-1")).thenReturn(resolved);
+        tools = new RunMetricTools(service, resolver);
     }
 
     @Test
     void runOneQuerySucceeds() {
-        when(service.getByRunId(1L, null)).thenReturn(List.of(metric("PSNR", 28.9, "dB", null)));
-        RunMetricsToolResult result = tools.queryRunMetrics(1L);
-        assertEquals(1L, result.getRunId());
+        when(service.getByRunId(101L, null)).thenReturn(List.of(metric("PSNR", 28.9, "dB", null)));
+        RunMetricsToolResult result = tools.queryRunMetrics("R-1");
+        assertEquals("R-1", result.getRunCode());
         assertTrue(result.isSuccess());
         assertEquals("查询成功", result.getMessage());
     }
 
     @Test
     void delegatesToServiceWithoutNameFilter() {
-        when(service.getByRunId(1L, null)).thenReturn(List.of());
-        tools.queryRunMetrics(1L);
-        verify(service).getByRunId(1L, null);
+        when(service.getByRunId(101L, null)).thenReturn(List.of());
+        tools.queryRunMetrics("R-1");
+        verify(service).getByRunId(101L, null);
         verifyNoMoreInteractions(service);
     }
 
     @Test
-    void returnsServiceMetricsWithoutReplacingRecords() {
+    void returnsServiceMetricsPreservingDecisionFields() {
         List<ExperimentMetricVO> metrics = List.of(metric("SSIM", 0.912, null, null));
-        when(service.getByRunId(1L, null)).thenReturn(metrics);
-        assertSame(metrics, tools.queryRunMetrics(1L).getMetrics());
+        when(service.getByRunId(101L, null)).thenReturn(metrics);
+        assertEquals(metrics.stream().map(MetricToolItem::from).toList(), tools.queryRunMetrics("R-1").getMetrics());
     }
 
     @Test
     void psnrValueRemainsUnchanged() {
-        when(service.getByRunId(1L, null)).thenReturn(List.of(metric("PSNR", 28.9, "dB", null)));
-        assertEquals(28.9, tools.queryRunMetrics(1L).getMetrics().get(0).getMetricValue());
+        when(service.getByRunId(101L, null)).thenReturn(List.of(metric("PSNR", 28.9, "dB", null)));
+        assertEquals(28.9, tools.queryRunMetrics("R-1").getMetrics().get(0).metricValue());
     }
 
     @Test
     void unitRemainsUnchanged() {
-        when(service.getByRunId(1L, null)).thenReturn(List.of(metric("PSNR", 28.9, "dB", null)));
-        assertEquals("dB", tools.queryRunMetrics(1L).getMetrics().get(0).getUnit());
+        when(service.getByRunId(101L, null)).thenReturn(List.of(metric("PSNR", 28.9, "dB", null)));
+        assertEquals("dB", tools.queryRunMetrics("R-1").getMetrics().get(0).unit());
     }
 
     @Test
     void nullStepIsPreserved() {
-        when(service.getByRunId(1L, null)).thenReturn(List.of(metric("PSNR", 28.9, "dB", null)));
-        assertNull(tools.queryRunMetrics(1L).getMetrics().get(0).getStep());
+        when(service.getByRunId(101L, null)).thenReturn(List.of(metric("PSNR", 28.9, "dB", null)));
+        assertNull(tools.queryRunMetrics("R-1").getMetrics().get(0).step());
     }
 
     @Test
@@ -74,15 +83,15 @@ class RunMetricToolsTests {
                 metric("train_loss", 0.007, null, 10000L),
                 metric("train_loss", 0.012, null, 5000L),
                 metric("train_loss", 0.021, null, 1000L));
-        when(service.getByRunId(1L, null)).thenReturn(metrics);
-        assertEquals(metrics, tools.queryRunMetrics(1L).getMetrics());
-        assertEquals(0.0037, tools.queryRunMetrics(1L).getMetrics().get(0).getMetricValue());
+        when(service.getByRunId(101L, null)).thenReturn(metrics);
+        assertEquals(metrics.stream().map(MetricToolItem::from).toList(), tools.queryRunMetrics("R-1").getMetrics());
+        assertEquals(0.0037, tools.queryRunMetrics("R-1").getMetrics().get(0).metricValue());
     }
 
     @Test
     void existingRunWithoutMetricsReturnsSuccessfulEmptyResult() {
-        when(service.getByRunId(1L, null)).thenReturn(List.of());
-        RunMetricsToolResult result = tools.queryRunMetrics(1L);
+        when(service.getByRunId(101L, null)).thenReturn(List.of());
+        RunMetricsToolResult result = tools.queryRunMetrics("R-1");
         assertTrue(result.isSuccess());
         assertEquals("当前实验运行暂无指标数据", result.getMessage());
         assertTrue(result.getMetrics().isEmpty());
@@ -90,51 +99,51 @@ class RunMetricToolsTests {
 
     @Test
     void missingRunReturnsFailureInsteadOfThrowing() {
-        when(service.getByRunId(99999L, null)).thenThrow(new BusinessException(404, "实验运行不存在"));
-        RunMetricsToolResult result = tools.queryRunMetrics(99999L);
-        assertEquals(99999L, result.getRunId());
+        when(resolver.getByRunCode("R-99999")).thenThrow(new BusinessException(404, "实验运行不存在"));
+        RunMetricsToolResult result = tools.queryRunMetrics("R-99999");
+        assertEquals("R-99999", result.getRunCode());
         assertFalse(result.isSuccess());
-        assertEquals("实验运行不存在", result.getMessage());
+        assertEquals("运行 R-99999 不存在", result.getMessage());
         assertTrue(result.getMetrics().isEmpty());
     }
 
     @Test
     void unknownSystemFailureIsNotSwallowed() {
         RuntimeException failure = new IllegalStateException("test database failure");
-        when(service.getByRunId(1L, null)).thenThrow(failure);
-        assertSame(failure, assertThrows(IllegalStateException.class, () -> tools.queryRunMetrics(1L)));
+        when(service.getByRunId(101L, null)).thenThrow(failure);
+        assertSame(failure, assertThrows(IllegalStateException.class, () -> tools.queryRunMetrics("R-1")));
     }
 
     @Test
     void otherBusinessFailuresAreNotConvertedToMissingRun() {
         for (BusinessException failure : List.of(new BusinessException(500, "内部错误"),
                 new BusinessException(404, "其他资源不存在"))) {
-            doThrow(failure).when(service).getByRunId(1L, null);
-            assertSame(failure, assertThrows(BusinessException.class, () -> tools.queryRunMetrics(1L)));
+            doThrow(failure).when(service).getByRunId(101L, null);
+            assertSame(failure, assertThrows(BusinessException.class, () -> tools.queryRunMetrics("R-1")));
         }
     }
 
     @Test
-    void nullRunIdIsRejectedBeforeCallingService() {
-        assertInvalidRunId(null);
+    void nullRunCodeIsRejectedBeforeCallingService() {
+        assertInvalidRunCode(null);
     }
 
     @Test
-    void zeroRunIdIsRejectedBeforeCallingService() {
-        assertInvalidRunId(0L);
+    void zeroRunCodeIsRejectedBeforeCallingService() {
+        assertInvalidRunCode("R-0");
     }
 
     @Test
-    void negativeRunIdIsRejectedBeforeCallingService() {
-        assertInvalidRunId(-1L);
+    void negativeRunCodeIsRejectedBeforeCallingService() {
+        assertInvalidRunCode("R--1");
     }
 
-    private void assertInvalidRunId(Long runId) {
-        RunMetricsToolResult result = tools.queryRunMetrics(runId);
+    private void assertInvalidRunCode(String runCode) {
+        RunMetricsToolResult result = tools.queryRunMetrics(runCode);
         assertFalse(result.isSuccess());
-        assertEquals("实验运行 ID 必须为正整数", result.getMessage());
+        assertEquals("实验运行编号不合法，请提供 R-1 格式的业务编号", result.getMessage());
         assertTrue(result.getMetrics().isEmpty());
-        verifyNoInteractions(service);
+        verifyNoInteractions(service, resolver);
     }
 
     private ExperimentMetricVO metric(String name, double value, String unit, Long step) {

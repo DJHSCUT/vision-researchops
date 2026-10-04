@@ -9,6 +9,7 @@ import com.djh.researchops.exception.BusinessException;
 import com.djh.researchops.mapper.ExperimentRunMapper;
 import com.djh.researchops.mapper.ExperimentTaskMapper;
 import com.djh.researchops.vo.ExperimentRunVO;
+import com.djh.researchops.util.BusinessCodeParser;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -73,6 +74,15 @@ public class ExperimentRunService {
     public ExperimentRunVO getById(Long id) {
 
         return toVO(getRunOrThrow(id));
+    }
+
+    public ExperimentRunVO getByRunCode(String runCode) {
+        String normalized = BusinessCodeParser.normalizeRunCode(runCode);
+        if (normalized == null) throw new BusinessException(400, "实验运行编号不合法");
+        ExperimentRun run = experimentRunMapper.selectOne(new LambdaQueryWrapper<ExperimentRun>()
+                .eq(ExperimentRun::getRunCode, normalized));
+        if (run == null) throw new BusinessException(404, "实验运行不存在");
+        return toVO(run);
     }
 
     public ExperimentRunVO update(Long id, UpdateRunRequest request) {

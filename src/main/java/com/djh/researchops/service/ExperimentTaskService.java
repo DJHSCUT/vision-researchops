@@ -8,6 +8,7 @@ import com.djh.researchops.exception.BusinessException;
 import com.djh.researchops.mapper.ExperimentTaskMapper;
 import com.djh.researchops.mapper.ResearchProjectMapper;
 import com.djh.researchops.vo.ExperimentTaskVO;
+import com.djh.researchops.util.BusinessCodeParser;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -62,6 +63,15 @@ public class ExperimentTaskService {
     public ExperimentTaskVO getById(Long id) {
 
         return toVO(getTaskOrThrow(id));
+    }
+
+    public ExperimentTaskVO getByTaskCode(String taskCode) {
+        String normalized = BusinessCodeParser.normalizeTaskCode(taskCode);
+        if (normalized == null) throw new BusinessException(400, "实验任务编号不合法");
+        ExperimentTask task = experimentTaskMapper.selectOne(new LambdaQueryWrapper<ExperimentTask>()
+                .eq(ExperimentTask::getTaskCode, normalized));
+        if (task == null) throw new BusinessException(404, "实验任务不存在");
+        return toVO(task);
     }
 
     public ExperimentTaskVO update(Long id, UpdateTaskRequest request) {

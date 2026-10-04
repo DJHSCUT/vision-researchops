@@ -8,6 +8,8 @@ import com.djh.researchops.service.ResultArtifactService;
 import com.djh.researchops.tool.RunArtifactTools;
 import com.djh.researchops.tool.TaskRunTools;
 import com.djh.researchops.service.ExperimentRunService;
+import com.djh.researchops.service.ExperimentTaskService;
+import com.djh.researchops.vo.ExperimentTaskVO;
 import com.djh.researchops.tool.RunLogTools;
 import com.djh.researchops.tool.RunMetricTools;
 import com.djh.researchops.vo.ExperimentMetricVO;
@@ -48,7 +50,22 @@ class AiProfileTests {
             .withBean(ExperimentMetricService.class, () -> mock(ExperimentMetricService.class))
             .withBean(ExperimentLogService.class, () -> mock(ExperimentLogService.class))
             .withBean(ResultArtifactService.class, () -> mock(ResultArtifactService.class))
-            .withBean(ExperimentRunService.class, () -> mock(ExperimentRunService.class))
+            .withBean(ExperimentRunService.class, () -> {
+                var service = mock(ExperimentRunService.class);
+                for (long id : new long[]{1L, 99999L}) {
+                    var run = new ExperimentRunVO(); run.setId(id); run.setRunCode("R-" + id);
+                    when(service.getByRunCode("R-" + id)).thenReturn(run);
+                }
+                return service;
+            })
+            .withBean(ExperimentTaskService.class, () -> {
+                var service = mock(ExperimentTaskService.class);
+                for (long id : new long[]{1L, 99999L}) {
+                    var task = new ExperimentTaskVO(); task.setId(id); task.setTaskCode("T-" + id);
+                    when(service.getByTaskCode("T-" + id)).thenReturn(task);
+                }
+                return service;
+            })
             .withUserConfiguration(AutoConfigurationOnly.class, RunMetricTools.class, RunLogTools.class,
                     RunArtifactTools.class, TaskRunTools.class, AiChatService.class, AiChatController.class);
 
@@ -148,7 +165,7 @@ class AiProfileTests {
                         {"id":"chat-tool","object":"chat.completion","created":0,"model":"deepseek-flash",
                         "choices":[{"index":0,"message":{"role":"assistant","content":null,
                         "tool_calls":[{"id":"call_metric","type":"function","function":{
-                        "name":"queryRunMetrics","arguments":"{\\"runId\\":1}"}}]},"finish_reason":"tool_calls"}]}
+                        "name":"queryRunMetrics","arguments":"{\\"runCode\\":\\"R-1\\"}"}}]},"finish_reason":"tool_calls"}]}
                         """;
             } else {
                 secondBody.set(body);
@@ -201,10 +218,10 @@ class AiProfileTests {
         AtomicInteger calls = new AtomicInteger();
         AtomicReference<String> secondBody = new AtomicReference<>();
         String arguments = switch (scenario) {
-            case "all" -> "{\"runId\":1}";
-            case "missing" -> "{\"runId\":99999,\"level\":null}";
-            case "invalid" -> "{\"runId\":1,\"level\":\"DEBUG\"}";
-            default -> "{\"runId\":1,\"level\":\" error \"}";
+            case "all" -> "{\"runCode\":\"R-1\"}";
+            case "missing" -> "{\"runCode\":\"R-99999\",\"level\":null}";
+            case "invalid" -> "{\"runCode\":\"R-1\",\"level\":\"DEBUG\"}";
+            default -> "{\"runCode\":\"R-1\",\"level\":\" error \"}";
         };
         String encodedArguments = tools.jackson.databind.json.JsonMapper.builder().build().writeValueAsString(arguments);
         HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
@@ -261,7 +278,7 @@ class AiProfileTests {
                         switch (scenario) {
                             case "missing" -> {
                                 verify(logService).getByRunId(99999L, null);
-                                assertThat(secondBody.get()).contains("实验运行不存在", "success\\\":false");
+                                assertThat(secondBody.get()).contains("运行 R-99999 不存在", "success\\\":false");
                             }
                             case "invalid" -> {
                                 verifyNoInteractions(logService);
@@ -291,10 +308,10 @@ class AiProfileTests {
         AtomicReference<String> firstBody = new AtomicReference<>();
         AtomicReference<String> secondBody = new AtomicReference<>();
         String arguments = switch (scenario) {
-            case "all" -> "{\"runId\":1}";
-            case "missing" -> "{\"runId\":99999,\"type\":null}";
-            case "invalid" -> "{\"runId\":1,\"type\":\"VIDEO\"}";
-            default -> "{\"runId\":1,\"type\":\" model \"}";
+            case "all" -> "{\"runCode\":\"R-1\"}";
+            case "missing" -> "{\"runCode\":\"R-99999\",\"type\":null}";
+            case "invalid" -> "{\"runCode\":\"R-1\",\"type\":\"VIDEO\"}";
+            default -> "{\"runCode\":\"R-1\",\"type\":\" model \"}";
         };
         String encodedArguments = tools.jackson.databind.json.JsonMapper.builder().build().writeValueAsString(arguments);
         HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
@@ -362,7 +379,7 @@ class AiProfileTests {
                             case "missing" -> {
                                 verify(artifactService).getByRunId(99999L, null);
                                 assertThat(result.get("success").asBoolean()).isFalse();
-                                assertThat(result.get("message").asString()).isEqualTo("实验运行不存在");
+                                assertThat(result.get("message").asString()).isEqualTo("运行 R-99999 不存在");
                             }
                             case "invalid" -> {
                                 verifyNoInteractions(artifactService);
@@ -399,10 +416,10 @@ class AiProfileTests {
         AtomicReference<String> secondBody = new AtomicReference<>();
         var mapper = tools.jackson.databind.json.JsonMapper.builder().build();
         String arguments = switch (scenario) {
-            case "all" -> "{\"taskId\":1}";
-            case "missing" -> "{\"taskId\":99999,\"status\":null}";
-            case "invalid" -> "{\"taskId\":1,\"status\":\"SUCCESS\"}";
-            default -> "{\"taskId\":1,\"status\":\" failed \"}";
+            case "all" -> "{\"taskCode\":\"T-1\"}";
+            case "missing" -> "{\"taskCode\":\"T-99999\",\"status\":null}";
+            case "invalid" -> "{\"taskCode\":\"T-1\",\"status\":\"SUCCESS\"}";
+            default -> "{\"taskCode\":\"T-1\",\"status\":\" failed \"}";
         };
         String encodedArguments = mapper.writeValueAsString(arguments);
         HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
@@ -445,6 +462,7 @@ class AiProfileTests {
                         } else if (!"invalid".equals(scenario)) {
                             ExperimentRunVO run = new ExperimentRunVO();
                             run.setId(7L);
+                            run.setRunCode("R-14");
                             run.setTaskId(1L);
                             run.setStatus("FAILED");
                             run.setErrorMessage("测试失败信息");
@@ -467,7 +485,7 @@ class AiProfileTests {
                             case "missing" -> {
                                 verify(runService).getByTaskId(99999L, null);
                                 assertThat(result.get("success").asBoolean()).isFalse();
-                                assertThat(result.get("message").asString()).isEqualTo("实验任务不存在");
+                                assertThat(result.get("message").asString()).isEqualTo("实验任务 T-99999 不存在");
                             }
                             case "invalid" -> {
                                 verifyNoInteractions(runService);

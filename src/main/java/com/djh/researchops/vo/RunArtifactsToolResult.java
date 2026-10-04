@@ -9,9 +9,9 @@ import java.util.List;
 @AllArgsConstructor
 public class RunArtifactsToolResult {
 
-    private Long runId;
+    private String runCode;
     private String type;
     private boolean success;
     private String message;
-    private List<ResultArtifactVO> artifacts;
+    private List<ArtifactToolItem> artifacts;
 }

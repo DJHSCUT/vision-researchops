@@ -9,9 +9,9 @@ import java.util.List;
 @AllArgsConstructor
 public class RunLogsToolResult {
 
-    private Long runId;
+    private String runCode;
     private String level;
     private boolean success;
     private String message;
-    private List<ExperimentLogVO> logs;
+    private List<LogToolItem> logs;
 }

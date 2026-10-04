@@ -5,6 +5,9 @@ import com.djh.researchops.service.ExperimentLogService;
 import com.djh.researchops.tool.RunLogTools;
 import com.djh.researchops.vo.ExperimentLogVO;
 import com.djh.researchops.vo.RunLogsToolResult;
+import com.djh.researchops.service.ExperimentRunService;
+import com.djh.researchops.vo.ExperimentRunVO;
+import com.djh.researchops.vo.LogToolItem;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.support.ToolCallbacks;
@@ -23,11 +26,17 @@ class RunLogToolsTests {
 
     private ExperimentLogService service;
     private RunLogTools tools;
+    private ExperimentRunService resolver;
 
     @BeforeEach
     void setUp() {
         service = mock(ExperimentLogService.class);
-        tools = new RunLogTools(service);
+        resolver = mock(ExperimentRunService.class);
+        ExperimentRunVO resolved = new ExperimentRunVO();
+        resolved.setId(101L);
+        resolved.setRunCode("R-1");
+        when(resolver.getByRunCode("R-1")).thenReturn(resolved);
+        tools = new RunLogTools(service, resolver);
     }
 
     @Test
@@ -61,26 +70,26 @@ class RunLogToolsTests {
     void whitespaceLevelIsRejectedBeforeService() { assertInvalidLevel("   "); }
 
     @Test
-    void nullRunIdIsRejectedBeforeService() { assertInvalidRunId(null); }
+    void nullRunCodeIsRejectedBeforeService() { assertInvalidRunCode(null); }
 
     @Test
-    void zeroRunIdIsRejectedBeforeService() { assertInvalidRunId(0L); }
+    void zeroRunCodeIsRejectedBeforeService() { assertInvalidRunCode("R-0"); }
 
     @Test
-    void negativeRunIdIsRejectedBeforeService() { assertInvalidRunId(-1L); }
+    void negativeRunCodeIsRejectedBeforeService() { assertInvalidRunCode("R--1"); }
 
     @Test
     void multipleLogsPreserveServiceListOrderAndContents() {
         List<ExperimentLogVO> logs = List.of(log(4L, "ERROR", "CUDA out of memory"),
                 log(2L, "WARN", "Low memory"), log(1L, "INFO", "Training started"));
-        when(service.getByRunId(1L, null)).thenReturn(logs);
-        assertSame(logs, tools.queryRunLogs(1L, null).getLogs());
+        when(service.getByRunId(101L, null)).thenReturn(logs);
+        assertEquals(logs.stream().map(LogToolItem::from).toList(), tools.queryRunLogs("R-1", null).getLogs());
     }
 
     @Test
     void existingRunWithoutLogsReturnsSuccess() {
-        when(service.getByRunId(1L, null)).thenReturn(List.of());
-        RunLogsToolResult result = tools.queryRunLogs(1L, null);
+        when(service.getByRunId(101L, null)).thenReturn(List.of());
+        RunLogsToolResult result = tools.queryRunLogs("R-1", null);
         assertTrue(result.isSuccess());
         assertEquals("当前实验运行暂无日志", result.getMessage());
         assertTrue(result.getLogs().isEmpty());
@@ -88,8 +97,8 @@ class RunLogToolsTests {
 
     @Test
     void existingRunWithoutErrorLogsReturnsSuccess() {
-        when(service.getByRunId(1L, "ERROR")).thenReturn(List.of());
-        RunLogsToolResult result = tools.queryRunLogs(1L, "ERROR");
+        when(service.getByRunId(101L, "ERROR")).thenReturn(List.of());
+        RunLogsToolResult result = tools.queryRunLogs("R-1", "ERROR");
         assertTrue(result.isSuccess());
         assertEquals("ERROR", result.getLevel());
         assertEquals("当前实验运行暂无 ERROR 日志", result.getMessage());
@@ -98,42 +107,42 @@ class RunLogToolsTests {
 
     @Test
     void missingRunReturnsStructuredFailure() {
-        when(service.getByRunId(99999L, null)).thenThrow(new BusinessException(404, "实验运行不存在"));
-        RunLogsToolResult result = tools.queryRunLogs(99999L, null);
-        assertEquals(99999L, result.getRunId());
+        when(resolver.getByRunCode("R-99999")).thenThrow(new BusinessException(404, "实验运行不存在"));
+        RunLogsToolResult result = tools.queryRunLogs("R-99999", null);
+        assertEquals("R-99999", result.getRunCode());
         assertNull(result.getLevel());
         assertFalse(result.isSuccess());
-        assertEquals("实验运行不存在", result.getMessage());
+        assertEquals("运行 R-99999 不存在", result.getMessage());
         assertTrue(result.getLogs().isEmpty());
     }
 
     @Test
     void unknownSystemFailureIsRethrown() {
         RuntimeException failure = new IllegalStateException("test database failure");
-        when(service.getByRunId(1L, null)).thenThrow(failure);
-        assertSame(failure, assertThrows(IllegalStateException.class, () -> tools.queryRunLogs(1L, null)));
+        when(service.getByRunId(101L, null)).thenThrow(failure);
+        assertSame(failure, assertThrows(IllegalStateException.class, () -> tools.queryRunLogs("R-1", null)));
     }
 
     @Test
     void otherBusinessFailuresAreRethrown() {
         for (BusinessException failure : List.of(new BusinessException(500, "内部错误"),
                 new BusinessException(404, "其他资源不存在"))) {
-            doThrow(failure).when(service).getByRunId(1L, null);
-            assertSame(failure, assertThrows(BusinessException.class, () -> tools.queryRunLogs(1L, null)));
+            doThrow(failure).when(service).getByRunId(101L, null);
+            assertSame(failure, assertThrows(BusinessException.class, () -> tools.queryRunLogs("R-1", null)));
         }
     }
 
     @Test
     void delegatesExactlyOnceToExistingService() {
-        when(service.getByRunId(1L, "WARN")).thenReturn(List.of());
-        tools.queryRunLogs(1L, "warn");
-        verify(service).getByRunId(1L, "WARN");
+        when(service.getByRunId(101L, "WARN")).thenReturn(List.of());
+        tools.queryRunLogs("R-1", "warn");
+        verify(service).getByRunId(101L, "WARN");
         verifyNoMoreInteractions(service);
     }
 
     @Test
     void toolDependsOnlyOnLogServiceWithoutMapperDependency() {
-        assertArrayEquals(new Class<?>[]{ExperimentLogService.class},
+        assertArrayEquals(new Class<?>[]{ExperimentLogService.class, ExperimentRunService.class},
                 RunLogTools.class.getConstructors()[0].getParameterTypes());
         assertTrue(Arrays.stream(RunLogTools.class.getDeclaredFields())
                 .noneMatch(field -> field.getType().getPackageName().contains(".mapper")));
@@ -144,41 +153,41 @@ class RunLogToolsTests {
         var callback = ToolCallbacks.from(tools)[0];
         assertEquals("queryRunLogs", callback.getToolDefinition().name());
         JsonNode schema = JsonMapper.builder().build().readTree(callback.getToolDefinition().inputSchema());
-        assertEquals(List.of("runId"), JsonMapper.builder().build()
+        assertEquals(List.of("runCode"), JsonMapper.builder().build()
                 .convertValue(schema.get("required"), List.class));
-        when(service.getByRunId(1L, null)).thenReturn(List.of());
-        String result = callback.call("{\"runId\":1}");
+        when(service.getByRunId(101L, null)).thenReturn(List.of());
+        String result = callback.call("{\"runCode\":\"R-1\"}");
         assertTrue(result.contains("当前实验运行暂无日志"));
-        verify(service).getByRunId(1L, null);
+        verify(service).getByRunId(101L, null);
     }
 
     private void assertSuccessfulQuery(String input, String expectedLevel) {
         List<ExperimentLogVO> logs = List.of(log(4L, expectedLevel == null ? "INFO" : expectedLevel, "真实测试日志"));
-        when(service.getByRunId(1L, expectedLevel)).thenReturn(logs);
-        RunLogsToolResult result = tools.queryRunLogs(1L, input);
-        assertEquals(1L, result.getRunId());
+        when(service.getByRunId(101L, expectedLevel)).thenReturn(logs);
+        RunLogsToolResult result = tools.queryRunLogs("R-1", input);
+        assertEquals("R-1", result.getRunCode());
         assertEquals(expectedLevel, result.getLevel());
         assertTrue(result.isSuccess());
         assertEquals("查询成功", result.getMessage());
-        assertSame(logs, result.getLogs());
-        verify(service).getByRunId(1L, expectedLevel);
+        assertEquals(logs.stream().map(LogToolItem::from).toList(), result.getLogs());
+        verify(service).getByRunId(101L, expectedLevel);
     }
 
     private void assertInvalidLevel(String level) {
-        RunLogsToolResult result = tools.queryRunLogs(1L, level);
+        RunLogsToolResult result = tools.queryRunLogs("R-1", level);
         assertFalse(result.isSuccess());
         assertEquals("日志级别不合法", result.getMessage());
         assertTrue(result.getLogs().isEmpty());
-        verifyNoInteractions(service);
+        verifyNoInteractions(service, resolver);
     }
 
-    private void assertInvalidRunId(Long runId) {
-        RunLogsToolResult result = tools.queryRunLogs(runId, null);
-        assertEquals(runId, result.getRunId());
+    private void assertInvalidRunCode(String runCode) {
+        RunLogsToolResult result = tools.queryRunLogs(runCode, null);
+        assertNull(result.getRunCode());
         assertFalse(result.isSuccess());
-        assertEquals("实验运行 ID 必须为正整数", result.getMessage());
+        assertEquals("实验运行编号不合法，请提供 R-1 格式的业务编号", result.getMessage());
         assertTrue(result.getLogs().isEmpty());
-        verifyNoInteractions(service);
+        verifyNoInteractions(service, resolver);
     }
 
     private ExperimentLogVO log(Long id, String level, String content) {

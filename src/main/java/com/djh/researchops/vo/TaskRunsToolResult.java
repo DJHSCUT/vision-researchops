@@ -9,9 +9,9 @@ import java.util.List;
 @AllArgsConstructor
 public class TaskRunsToolResult {
 
-    private Long taskId;
+    private String taskCode;
     private String status;
     private boolean success;
     private String message;
-    private List<ExperimentRunVO> runs;
+    private List<RunToolItem> runs;
 }

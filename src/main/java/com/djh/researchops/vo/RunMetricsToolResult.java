@@ -9,8 +9,8 @@ import java.util.List;
 @AllArgsConstructor
 public class RunMetricsToolResult {
 
-    private Long runId;
+    private String runCode;
     private boolean success;
     private String message;
-    private List<ExperimentMetricVO> metrics;
+    private List<MetricToolItem> metrics;
 }

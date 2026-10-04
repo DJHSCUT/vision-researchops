@@ -5,6 +5,7 @@ import com.djh.researchops.service.*;
 import com.djh.researchops.tool.*;
 import com.djh.researchops.vo.ExperimentMetricVO;
 import com.djh.researchops.vo.ExperimentRunVO;
+import com.djh.researchops.vo.ExperimentTaskVO;
 import com.sun.net.httpserver.HttpServer;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -32,9 +33,10 @@ import static org.mockito.Mockito.*;
 // 测试中的日期选择模拟模型决策，不属于生产代码，也不证明真实 LLM 必然遵循 Prompt。
 class AiToolChainingTests {
 
-    private static final String QUESTION = "Task 3 最近一次 Run 的 PSNR 是多少？";
+    private static final String QUESTION = "T-1 最近一次运行的 PSNR 是多少？";
     private static final LocalDateTime NEWEST = LocalDateTime.of(2026, 1, 3, 12, 0);
     private ExperimentRunService runs;
+    private ExperimentTaskService tasks;
     private ExperimentMetricService metrics;
     private ExperimentLogService logs;
     private ResultArtifactService artifacts;
@@ -43,12 +45,20 @@ class AiToolChainingTests {
     @BeforeEach
     void setUp() {
         runs = mock(ExperimentRunService.class);
+        tasks = mock(ExperimentTaskService.class);
+        var task = new ExperimentTaskVO(); task.setId(3L); task.setTaskCode("T-1");
+        when(tasks.getByTaskCode("T-1")).thenReturn(task);
+        for (var entry : Map.of("R-2", 12L, "R-3", 20L, "R-1", 101L).entrySet()) {
+            var resolved = new ExperimentRunVO(); resolved.setId(entry.getValue()); resolved.setRunCode(entry.getKey());
+            when(runs.getByRunCode(entry.getKey())).thenReturn(resolved);
+        }
         metrics = mock(ExperimentMetricService.class);
         logs = mock(ExperimentLogService.class);
         artifacts = mock(ResultArtifactService.class);
         runner = new ApplicationContextRunner()
                 .withInitializer(new ConfigDataApplicationContextInitializer())
                 .withBean(ExperimentRunService.class, () -> runs)
+                .withBean(ExperimentTaskService.class, () -> tasks)
                 .withBean(ExperimentMetricService.class, () -> metrics)
                 .withBean(ExperimentLogService.class, () -> logs)
                 .withBean(ResultArtifactService.class, () -> artifacts)
@@ -62,11 +72,25 @@ class AiToolChainingTests {
         when(runs.getByTaskId(3L, null)).thenReturn(multipleRuns());
         when(metrics.getByRunId(12L, null)).thenReturn(List.of(metric(12L, "SSIM", 0.95, null),
                 metric(12L, "PSNR", psnr, "dB")));
-        assertThat(chat(Mode.CHAIN, QUESTION, 3)).isEqualTo("Task 3 最近一次 Run 12 的 PSNR 是 " + psnr + " dB。");
-        var order = inOrder(runs, metrics);
+        assertThat(chat(Mode.CHAIN, QUESTION, 3)).isEqualTo("T-1 最近一次 R-2 的 PSNR 是 " + psnr + " dB。");
+        var order = inOrder(tasks, runs, metrics);
+        order.verify(tasks).getByTaskCode("T-1");
         order.verify(runs).getByTaskId(3L, null);
+        order.verify(runs).getByRunCode("R-2");
         order.verify(metrics).getByRunId(12L, null);
         verifyNoMoreInteractions(runs, metrics);
+        verifyNoInteractions(logs, artifacts);
+    }
+
+    @Test
+    void naturalLanguageTaskOneUsesBusinessCodeNotInternalId() throws Exception {
+        when(runs.getByTaskId(3L, null)).thenReturn(multipleRuns());
+        when(metrics.getByRunId(12L, null)).thenReturn(List.of(metric(12L, "PSNR", 30.0, "dB")));
+        assertThat(chat(Mode.CHAIN, "Task 1 最近一次 Run 的 PSNR？", 3)).contains("T-1", "R-2", "30.0 dB");
+        verify(tasks).getByTaskCode("T-1");
+        verify(runs).getByTaskId(3L, null);
+        verify(runs).getByRunCode("R-2");
+        verify(metrics).getByRunId(12L, null);
         verifyNoInteractions(logs, artifacts);
     }
 
@@ -75,8 +99,9 @@ class AiToolChainingTests {
         when(runs.getByTaskId(3L, null)).thenReturn(List.of(run(99L, NEWEST.minusDays(1)),
                 run(20L, NEWEST), run(12L, NEWEST)));
         when(metrics.getByRunId(20L, null)).thenReturn(List.of(metric(20L, "PSNR", 30.5, "dB")));
-        assertThat(chat(Mode.CHAIN, QUESTION, 3)).contains("Run 20", "30.5 dB");
+        assertThat(chat(Mode.CHAIN, QUESTION, 3)).contains("R-3", "30.5 dB");
         verify(runs).getByTaskId(3L, null);
+        verify(runs).getByRunCode("R-3");
         verify(metrics).getByRunId(20L, null);
         verifyNoMoreInteractions(runs, metrics);
         verifyNoInteractions(logs, artifacts);
@@ -84,17 +109,16 @@ class AiToolChainingTests {
 
     @Test
     void missingTaskStopsBeforeMetricQuery() throws Exception {
-        when(runs.getByTaskId(3L, null)).thenThrow(new BusinessException(404, "实验任务不存在"));
-        assertThat(chat(Mode.CHAIN, QUESTION, 2)).isEqualTo("实验任务不存在");
-        verify(runs).getByTaskId(3L, null);
-        verifyNoMoreInteractions(runs);
-        verifyNoInteractions(metrics, logs, artifacts);
+        when(tasks.getByTaskCode("T-1")).thenThrow(new BusinessException(404, "实验任务不存在"));
+        assertThat(chat(Mode.CHAIN, QUESTION, 2)).isEqualTo("实验任务 T-1 不存在");
+        verify(tasks).getByTaskCode("T-1");
+        verifyNoInteractions(runs, metrics, logs, artifacts);
     }
 
     @Test
     void taskWithoutRunsStopsBeforeMetricQuery() throws Exception {
         when(runs.getByTaskId(3L, null)).thenReturn(List.of());
-        assertThat(chat(Mode.CHAIN, QUESTION, 2)).isEqualTo("Task 3 当前暂无 Run。");
+        assertThat(chat(Mode.CHAIN, QUESTION, 2)).isEqualTo("T-1 当前暂无 Run。");
         verify(runs).getByTaskId(3L, null);
         verifyNoMoreInteractions(runs);
         verifyNoInteractions(metrics, logs, artifacts);
@@ -104,8 +128,9 @@ class AiToolChainingTests {
     void latestRunWithoutPsnrDoesNotUseSsimOrFallBackToOlderRun() throws Exception {
         when(runs.getByTaskId(3L, null)).thenReturn(multipleRuns());
         when(metrics.getByRunId(12L, null)).thenReturn(List.of(metric(12L, "SSIM", 0.99, null)));
-        assertThat(chat(Mode.CHAIN, QUESTION, 3)).isEqualTo("最近一次 Run 12 当前没有 PSNR 指标。");
+        assertThat(chat(Mode.CHAIN, QUESTION, 3)).isEqualTo("最近一次 R-2 当前没有 PSNR 指标。");
         verify(runs).getByTaskId(3L, null);
+        verify(runs).getByRunCode("R-2");
         verify(metrics).getByRunId(12L, null);
         verifyNoMoreInteractions(runs, metrics);
         verifyNoInteractions(logs, artifacts);
@@ -115,7 +140,7 @@ class AiToolChainingTests {
     void latestRunWithoutAnyMetricsReportsNoPsnr() throws Exception {
         when(runs.getByTaskId(3L, null)).thenReturn(multipleRuns());
         when(metrics.getByRunId(12L, null)).thenReturn(List.of());
-        assertThat(chat(Mode.CHAIN, QUESTION, 3)).isEqualTo("最近一次 Run 12 当前没有 PSNR 指标。");
+        assertThat(chat(Mode.CHAIN, QUESTION, 3)).isEqualTo("最近一次 R-2 当前没有 PSNR 指标。");
         verify(metrics).getByRunId(12L, null);
         verifyNoMoreInteractions(metrics);
         verifyNoInteractions(logs, artifacts);
@@ -125,7 +150,7 @@ class AiToolChainingTests {
     void selectedRunDisappearingStopsWithoutFallback() throws Exception {
         when(runs.getByTaskId(3L, null)).thenReturn(multipleRuns());
         when(metrics.getByRunId(12L, null)).thenThrow(new BusinessException(404, "实验运行不存在"));
-        assertThat(chat(Mode.CHAIN, QUESTION, 3)).isEqualTo("实验运行不存在");
+        assertThat(chat(Mode.CHAIN, QUESTION, 3)).isEqualTo("运行 R-2 不存在");
         verify(metrics).getByRunId(12L, null);
         verifyNoMoreInteractions(metrics);
         verifyNoInteractions(logs, artifacts);
@@ -140,17 +165,18 @@ class AiToolChainingTests {
 
     @Test
     void explicitRunPsnrRemainsSingleToolCall() throws Exception {
-        when(metrics.getByRunId(1L, null)).thenReturn(List.of(metric(1L, "PSNR", 28.75, "dB")));
-        assertThat(chat(Mode.SINGLE, "Run 1 的 PSNR 是多少？", 2)).isEqualTo("Run 1 的 PSNR 是 28.75 dB。");
-        verify(metrics).getByRunId(1L, null);
+        when(metrics.getByRunId(101L, null)).thenReturn(List.of(metric(101L, "PSNR", 28.75, "dB")));
+        assertThat(chat(Mode.SINGLE, "R-1 的 PSNR 是多少？", 2)).isEqualTo("R-1 的 PSNR 是 28.75 dB。");
+        verify(metrics).getByRunId(101L, null);
         verifyNoMoreInteractions(metrics);
-        verifyNoInteractions(runs, logs, artifacts);
+        verify(runs).getByRunCode("R-1");
+        verifyNoInteractions(tasks, logs, artifacts);
     }
 
     @Test
     void generalKnowledgeDoesNotCallBusinessTools() throws Exception {
         assertThat(chat(Mode.KNOWLEDGE, "PSNR 是什么？", 1)).isEqualTo("PSNR 是峰值信噪比。");
-        verifyNoInteractions(runs, metrics, logs, artifacts);
+        verifyNoInteractions(tasks, runs, metrics, logs, artifacts);
     }
 
     private String chat(Mode mode, String question, int expectedRequests) throws Exception {
@@ -180,6 +206,7 @@ class AiToolChainingTests {
     private ExperimentRunVO run(Long id, LocalDateTime createdAt) {
         ExperimentRunVO run = new ExperimentRunVO();
         run.setId(id);
+        run.setRunCode(Map.of(99L, "R-77", 12L, "R-2", 5L, "R-50", 20L, "R-3").get(id));
         run.setTaskId(3L);
         run.setStatus("COMPLETED");
         run.setCreatedAt(createdAt);
@@ -205,7 +232,7 @@ class AiToolChainingTests {
         private final Mode mode;
         private final List<JsonNode> requests = new CopyOnWriteArrayList<>();
         private final AtomicReference<Throwable> failure = new AtomicReference<>();
-        private long selectedRunId;
+        private String selectedRunCode;
 
         private ScriptedModel(Mode mode) throws Exception {
             this.mode = mode;
@@ -237,39 +264,57 @@ class AiToolChainingTests {
                 return finalText("PSNR 是峰值信噪比。");
             }
             if (round == 1) {
-                if (mode == Mode.SINGLE) {
-                    selectedRunId = 1L;
-                    return toolCall("call_metric", "queryRunMetrics", "{\"runId\":1}");
+                String system = request.get("messages").get(0).get("content").asString();
+                assertThat(system).contains("Task 1", "T-1", "Run 2", "R-2", "不要求用户提供数据库 ID");
+                for (JsonNode tool : request.get("tools")) {
+                    var properties = tool.get("function").get("parameters").get("properties");
+                    assertThat(properties.has("runId")).isFalse();
+                    assertThat(properties.has("taskId")).isFalse();
                 }
-                return toolCall("call_task", "queryTaskRuns", "{\"taskId\":3,\"status\":null}");
+                if (mode == Mode.SINGLE) {
+                    selectedRunCode = "R-1";
+                    return toolCall("call_metric", "queryRunMetrics", "{\"runCode\":\"R-1\"}");
+                }
+                return toolCall("call_task", "queryTaskRuns", "{\"taskCode\":\"T-1\",\"status\":null}");
             }
             if (mode == Mode.CHAIN && round == 2) {
                 JsonNode result = toolResult(request, "call_task");
-                assertThat(result.get("taskId").asLong()).isEqualTo(3L);
+                assertThat(result.get("taskCode").asString()).isEqualTo("T-1");
+                assertNoInternalIds(result);
                 assertThat(result.get("status").isNull()).isTrue();
                 if (!result.get("success").asBoolean()) return finalText(result.get("message").asString());
                 List<JsonNode> runs = StreamSupport.stream(result.get("runs").spliterator(), false).toList();
-                if (runs.isEmpty()) return finalText("Task 3 当前暂无 Run。");
+                if (runs.isEmpty()) return finalText("T-1 当前暂无 Run。");
                 if (runs.stream().anyMatch(run -> run.get("createdAt") == null || run.get("createdAt").isNull())) {
                     return finalText("缺少 createdAt，无法确定最近一次 Run。");
                 }
                 // 仅脚本化 Mock Model 从收到的 Tool Result 中动态决定下一次模型 tool_call 参数。
-                selectedRunId = runs.stream().max(Comparator
-                        .comparing((JsonNode run) -> LocalDateTime.parse(run.get("createdAt").asString()))
-                        .thenComparingLong(run -> run.get("id").asLong())).orElseThrow().get("id").asLong();
-                return toolCall("call_metric", "queryRunMetrics", mapper.writeValueAsString(Map.of("runId", selectedRunId)));
+                selectedRunCode = runs.stream().sorted(Comparator
+                        .comparing((JsonNode run) -> LocalDateTime.parse(run.get("createdAt").asString())).reversed())
+                        .findFirst().orElseThrow().get("runCode").asString();
+                return toolCall("call_metric", "queryRunMetrics", mapper.writeValueAsString(Map.of("runCode", selectedRunCode)));
             }
             assertThat(round).isEqualTo(mode == Mode.CHAIN ? 3 : 2);
             JsonNode result = toolResult(request, "call_metric");
-            assertThat(result.get("runId").asLong()).isEqualTo(selectedRunId);
+            assertThat(result.get("runCode").asString()).isEqualTo(selectedRunCode);
+            assertNoInternalIds(result);
             if (!result.get("success").asBoolean()) return finalText(result.get("message").asString());
             var psnr = StreamSupport.stream(result.get("metrics").spliterator(), false)
                     .filter(metric -> "PSNR".equals(metric.get("metricName").asString())).findFirst();
-            if (psnr.isEmpty()) return finalText("最近一次 Run " + selectedRunId + " 当前没有 PSNR 指标。");
+            if (psnr.isEmpty()) return finalText("最近一次 " + selectedRunCode + " 当前没有 PSNR 指标。");
             JsonNode metric = psnr.orElseThrow();
             String unit = metric.get("unit").isNull() ? "" : " " + metric.get("unit").asString();
-            return finalText((mode == Mode.CHAIN ? "Task 3 最近一次 " : "") + "Run " + selectedRunId
+            return finalText((mode == Mode.CHAIN ? "T-1 最近一次 " : "") + selectedRunCode
                     + " 的 PSNR 是 " + metric.get("metricValue").asDouble() + unit + "。");
+        }
+
+        private void assertNoInternalIds(JsonNode node) {
+            if (node.isObject()) {
+                assertThat(node.has("id")).isFalse();
+                assertThat(node.has("taskId")).isFalse();
+                assertThat(node.has("runId")).isFalse();
+            }
+            if (node.isObject() || node.isArray()) node.forEach(this::assertNoInternalIds);
         }
 
         private JsonNode toolResult(JsonNode request, String callId) {
