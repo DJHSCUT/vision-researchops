@@ -9,6 +9,7 @@ import RunDialog from './RunDialog.vue'
 import ExperimentLogs from './ExperimentLogs.vue'
 import ExperimentMetrics from './ExperimentMetrics.vue'
 import ExperimentArtifacts from './ExperimentArtifacts.vue'
+import BusinessCodeBadge from './BusinessCodeBadge.vue'
 
 const props = defineProps({ taskId: { type: [String, Number], required: true } })
 const expanded = ref(false)
@@ -105,7 +106,7 @@ onUnmounted(() => { active = false; loadSequence++ })
       </div>
       <div v-else class="runs-list">
         <article v-for="run in runs" :key="run.id" class="run-card">
-          <div class="run-card-heading"><h5>{{ run.runName }}</h5><StatusBadge :status="run.status" :label="getRunStatusLabel(run.status)" /></div>
+          <div class="run-card-heading"><h5><BusinessCodeBadge :code="run.runCode" />{{ run.runName }}</h5><StatusBadge :status="run.status" :label="getRunStatusLabel(run.status)" /></div>
           <dl class="run-dates">
             <div><dt>开始时间</dt><dd>{{ formatDate(run.startedAt) }}</dd></div>
             <div><dt>结束时间</dt><dd>{{ formatDate(run.finishedAt) }}</dd></div>

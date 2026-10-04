@@ -22,11 +22,14 @@ public class ExperimentTaskService {
 
     private final ResearchProjectMapper researchProjectMapper;
 
+    private final BusinessCodeService businessCodeService;
+
     public ExperimentTaskVO create(Long projectId, CreateTaskRequest request) {
 
         checkProjectExists(projectId);
 
         ExperimentTask task = new ExperimentTask();
+        task.setTaskCode(businessCodeService.nextTaskCode());
         task.setProjectId(projectId);
         task.setName(request.getName());
         task.setDescription(request.getDescription());
@@ -116,6 +119,7 @@ public class ExperimentTaskService {
 
         ExperimentTaskVO vo = new ExperimentTaskVO();
         vo.setId(task.getId());
+        vo.setTaskCode(task.getTaskCode());
         vo.setProjectId(task.getProjectId());
         vo.setName(task.getName());
         vo.setDescription(task.getDescription());

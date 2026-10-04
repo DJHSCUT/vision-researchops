@@ -9,6 +9,8 @@ public class ExperimentTaskVO {
 
     private Long id;
 
+    private String taskCode;
+
     private Long projectId;
 
     private String name;

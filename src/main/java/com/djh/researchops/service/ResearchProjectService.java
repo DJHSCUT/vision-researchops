@@ -18,9 +18,13 @@ public class ResearchProjectService {
 
     private final ResearchProjectMapper researchProjectMapper;
 
+    private final BusinessCodeService businessCodeService;
+
     public ResearchProjectVO create(CreateProjectRequest request) {
 
         ResearchProject project = new ResearchProject();
+
+        project.setProjectCode(businessCodeService.nextProjectCode());
 
         project.setName(request.getName());
         project.setDescription(request.getDescription());
@@ -111,6 +115,7 @@ public class ResearchProjectService {
         ResearchProjectVO vo = new ResearchProjectVO();
 
         vo.setId(project.getId());
+        vo.setProjectCode(project.getProjectCode());
         vo.setName(project.getName());
         vo.setDescription(project.getDescription());
         vo.setStatus(project.getStatus());

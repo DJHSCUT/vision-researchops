@@ -13,6 +13,7 @@ import com.djh.researchops.exception.BusinessException;
 import com.djh.researchops.mapper.ExperimentRunMapper;
 import com.djh.researchops.mapper.ExperimentTaskMapper;
 import com.djh.researchops.service.ExperimentRunService;
+import com.djh.researchops.service.BusinessCodeService;
 import jakarta.validation.Validation;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.junit.jupiter.api.BeforeAll;
@@ -52,7 +53,7 @@ class ExperimentRunServiceTests {
     void setUp() {
         runMapper = mock(ExperimentRunMapper.class);
         taskMapper = mock(ExperimentTaskMapper.class);
-        service = new ExperimentRunService(runMapper, taskMapper);
+        service = new ExperimentRunService(runMapper, taskMapper, mock(BusinessCodeService.class));
         run = new ExperimentRun();
         run.setId(1L);
         run.setTaskId(2L);

@@ -6,6 +6,7 @@ import { formatDate } from '../utils/project'
 import StatusBadge from './StatusBadge.vue'
 import TaskDialog from './TaskDialog.vue'
 import ExperimentRuns from './ExperimentRuns.vue'
+import BusinessCodeBadge from './BusinessCodeBadge.vue'
 
 const props = defineProps({ projectId: { type: [String, Number], required: true } })
 const tasks = ref([])
@@ -92,7 +93,7 @@ onUnmounted(() => { active = false; loadSequence++ })
     </div>
     <div v-else class="task-grid">
       <article v-for="task in tasks" :key="task.id" class="task-card">
-        <div class="task-card-heading"><h3>{{ task.name }}</h3><StatusBadge :status="task.status" /></div>
+        <div class="task-card-heading"><h3><BusinessCodeBadge :code="task.taskCode" />{{ task.name }}</h3><StatusBadge :status="task.status" /></div>
         <p class="task-description">{{ task.description || '暂无任务描述' }}</p>
         <dl class="card-dates"><div><dt>创建时间</dt><dd>{{ formatDate(task.createdAt) }}</dd></div><div><dt>更新时间</dt><dd>{{ formatDate(task.updatedAt) }}</dd></div></dl>
         <div class="card-footer task-card-footer"><span class="muted">操作</span><div>

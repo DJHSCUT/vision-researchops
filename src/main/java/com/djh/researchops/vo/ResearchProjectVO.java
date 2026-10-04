@@ -9,6 +9,8 @@ public class ResearchProjectVO {
 
     private Long id;
 
+    private String projectCode;
+
     private String name;
 
     private String description;

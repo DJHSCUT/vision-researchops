@@ -5,6 +5,7 @@ import { deleteProject, getProject, getProjects } from '../api/project'
 import { formatDate, getStatusOptions } from '../utils/project'
 import ProjectDialog from '../components/ProjectDialog.vue'
 import StatusBadge from '../components/StatusBadge.vue'
+import BusinessCodeBadge from '../components/BusinessCodeBadge.vue'
 
 const projects = ref([])
 const loading = ref(true)
@@ -15,7 +16,7 @@ const selected = ref(null)
 const busyId = ref(null)
 const statuses = computed(() => getStatusOptions(projects.value))
 const filtered = computed(() => projects.value.filter((project) =>
-  `${project.name} ${project.description ?? ''}`.toLowerCase().includes(query.value.toLowerCase().trim()),
+  `${project.projectCode ?? ''} ${project.name} ${project.description ?? ''}`.toLowerCase().includes(query.value.toLowerCase().trim()),
 ))
 const activeCount = computed(() => projects.value.filter((project) => project.status === 'ACTIVE').length)
 const latestUpdate = computed(() => projects.value.map((p) => p.updatedAt).filter(Boolean).sort().at(-1))
@@ -80,7 +81,7 @@ onMounted(loadProjects)
     <div v-else class="project-grid">
       <article v-for="project in filtered" :key="project.id" class="project-card">
         <div class="card-topline"><span class="project-monogram" aria-hidden="true">{{ project.name?.slice(0, 1).toUpperCase() }}</span><StatusBadge :status="project.status" /></div>
-        <h3><RouterLink :to="`/projects/${project.id}`">{{ project.name }}</RouterLink></h3>
+        <h3><RouterLink :to="`/projects/${project.id}`"><BusinessCodeBadge :code="project.projectCode" />{{ project.name }}</RouterLink></h3>
         <p class="project-description">{{ project.description || '暂无项目描述' }}</p>
         <dl class="card-dates"><div><dt>创建时间</dt><dd>{{ formatDate(project.createdAt) }}</dd></div><div><dt>更新时间</dt><dd>{{ formatDate(project.updatedAt) }}</dd></div></dl>
         <div class="card-footer"><RouterLink :to="`/projects/${project.id}`" class="view-link">查看项目 <span aria-hidden="true">↗</span></RouterLink><div><ElButton text :disabled="busyId !== null" @click="openEdit(project)">编辑</ElButton><ElButton text class="delete-button" :disabled="busyId !== null" @click="remove(project)">删除</ElButton></div></div>

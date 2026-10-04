@@ -2,6 +2,7 @@ package com.djh.researchops;
 
 import com.djh.researchops.entity.ResearchProject;
 import com.djh.researchops.mapper.ResearchProjectMapper;
+import com.djh.researchops.service.BusinessCodeService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -12,10 +13,15 @@ class VisionResearchopsApplicationTests {
     @Autowired
     private ResearchProjectMapper researchProjectMapper;
 
+    @Autowired
+    private BusinessCodeService businessCodeService;
+
     @Test
     void testResearchProjectMapper() {
 
         ResearchProject project = new ResearchProject();
+
+        project.setProjectCode(businessCodeService.nextProjectCode());
 
         project.setName("Bitemporal 3DGS Local Change Detection");
         project.setDescription(

@@ -9,6 +9,8 @@ public class ExperimentRunVO {
 
     private Long id;
 
+    private String runCode;
+
     private Long taskId;
 
     private String runName;

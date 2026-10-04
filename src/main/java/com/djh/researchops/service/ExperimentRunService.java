@@ -24,11 +24,14 @@ public class ExperimentRunService {
 
     private final ExperimentTaskMapper experimentTaskMapper;
 
+    private final BusinessCodeService businessCodeService;
+
     public ExperimentRunVO create(Long taskId, CreateRunRequest request) {
 
         checkTaskExists(taskId);
 
         ExperimentRun run = new ExperimentRun();
+        run.setRunCode(businessCodeService.nextRunCode());
         run.setTaskId(taskId);
         run.setRunName(request.getRunName());
         run.setStatus("PENDING");
@@ -167,6 +170,7 @@ public class ExperimentRunService {
 
         ExperimentRunVO vo = new ExperimentRunVO();
         vo.setId(run.getId());
+        vo.setRunCode(run.getRunCode());
         vo.setTaskId(run.getTaskId());
         vo.setRunName(run.getRunName());
         vo.setStatus(run.getStatus());
