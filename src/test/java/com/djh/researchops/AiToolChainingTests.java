@@ -35,6 +35,7 @@ class AiToolChainingTests {
 
     private static final String QUESTION = "T-1 最近一次运行的 PSNR 是多少？";
     private static final LocalDateTime NEWEST = LocalDateTime.of(2026, 1, 3, 12, 0);
+    private ResearchProjectService projects;
     private ExperimentRunService runs;
     private ExperimentTaskService tasks;
     private ExperimentMetricService metrics;
@@ -44,6 +45,9 @@ class AiToolChainingTests {
 
     @BeforeEach
     void setUp() {
+        projects = mock(ResearchProjectService.class);
+        var project = new com.djh.researchops.vo.ResearchProjectVO(); project.setId(707L); project.setProjectCode("P-1");
+        when(projects.getByProjectCode("P-1")).thenReturn(project);
         runs = mock(ExperimentRunService.class);
         tasks = mock(ExperimentTaskService.class);
         var task = new ExperimentTaskVO(); task.setId(3L); task.setTaskCode("T-1");
@@ -57,13 +61,14 @@ class AiToolChainingTests {
         artifacts = mock(ResultArtifactService.class);
         runner = new ApplicationContextRunner()
                 .withInitializer(new ConfigDataApplicationContextInitializer())
+                .withBean(ResearchProjectService.class, () -> projects)
                 .withBean(ExperimentRunService.class, () -> runs)
                 .withBean(ExperimentTaskService.class, () -> tasks)
                 .withBean(ExperimentMetricService.class, () -> metrics)
                 .withBean(ExperimentLogService.class, () -> logs)
                 .withBean(ResultArtifactService.class, () -> artifacts)
                 .withUserConfiguration(AiProfileTests.AutoConfigurationOnly.class, AiChatService.class,
-                        TaskRunTools.class, RunMetricTools.class, RunLogTools.class, RunArtifactTools.class);
+                        ProjectTaskTools.class, TaskRunTools.class, RunMetricTools.class, RunLogTools.class, RunArtifactTools.class);
     }
 
     @ParameterizedTest
@@ -176,7 +181,64 @@ class AiToolChainingTests {
     @Test
     void generalKnowledgeDoesNotCallBusinessTools() throws Exception {
         assertThat(chat(Mode.KNOWLEDGE, "PSNR 是什么？", 1)).isEqualTo("PSNR 是峰值信噪比。");
+        verifyNoInteractions(projects, tasks, runs, metrics, logs, artifacts);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"P-1 有哪些实验任务？", "Project 1 有哪些实验任务？", "项目 1 有哪些实验任务？"})
+    void projectSingleQueryUsesBusinessCode(String question) throws Exception {
+        when(tasks.getByProjectId(707L, null)).thenReturn(List.of(projectTask("T-1", NEWEST)));
+        assertThat(chat(Mode.PROJECT_SINGLE, question, 2)).isEqualTo("P-1 的实验任务：T-1");
+        verify(projects).getByProjectCode("P-1"); verify(tasks).getByProjectId(707L, null);
+        verifyNoMoreInteractions(tasks); verifyNoInteractions(runs, metrics, logs, artifacts);
+    }
+
+    @Test
+    void projectChainsToRunsUsingRealNewestTaskCode() throws Exception {
+        when(tasks.getByProjectId(707L, null)).thenReturn(List.of(projectTask("T-99", NEWEST.minusDays(1)), projectTask("T-1", NEWEST)));
+        when(runs.getByTaskId(3L, null)).thenReturn(multipleRuns());
+        assertThat(chat(Mode.PROJECT_CHAIN, "P-1 最近创建的实验任务有哪些运行？", 3)).isEqualTo("T-1 的运行：R-77、R-2、R-50");
+        var order = inOrder(projects, tasks, runs);
+        order.verify(projects).getByProjectCode("P-1"); order.verify(tasks).getByProjectId(707L, null);
+        order.verify(tasks).getByTaskCode("T-1"); order.verify(runs).getByTaskId(3L, null);
+        verifyNoMoreInteractions(projects, tasks, runs); verifyNoInteractions(metrics, logs, artifacts);
+    }
+
+    @Test
+    void projectEqualTimesUseFirstReturnedTask() throws Exception {
+        when(tasks.getByProjectId(707L, null)).thenReturn(List.of(projectTask("T-1", NEWEST), projectTask("T-99", NEWEST)));
+        when(runs.getByTaskId(3L, null)).thenReturn(List.of());
+        assertThat(chat(Mode.PROJECT_CHAIN, "P-1 最近创建的实验任务有哪些运行？", 3)).isEqualTo("T-1 当前暂无 Run。");
+        verify(tasks).getByTaskCode("T-1"); verifyNoInteractions(metrics, logs, artifacts);
+    }
+
+    @Test
+    void missingProjectStopsChain() throws Exception {
+        when(projects.getByProjectCode("P-1")).thenThrow(new BusinessException(404, "研究项目不存在"));
+        assertThat(chat(Mode.PROJECT_CHAIN, "P-1 最近创建的实验任务有哪些运行？", 2)).isEqualTo("研究项目 P-1 不存在");
         verifyNoInteractions(tasks, runs, metrics, logs, artifacts);
+    }
+
+    @Test
+    void emptyProjectStopsChain() throws Exception {
+        when(tasks.getByProjectId(707L, null)).thenReturn(List.of());
+        assertThat(chat(Mode.PROJECT_CHAIN, "P-1 最近创建的实验任务有哪些运行？", 2)).isEqualTo("P-1 当前没有实验任务。");
+        verify(tasks).getByProjectId(707L, null);
+        verifyNoMoreInteractions(tasks); verifyNoInteractions(runs, metrics, logs, artifacts);
+    }
+
+    @Test
+    void missingTaskCreationTimeStopsChain() throws Exception {
+        when(tasks.getByProjectId(707L, null)).thenReturn(List.of(projectTask("T-1", null)));
+        assertThat(chat(Mode.PROJECT_CHAIN, "P-1 最近创建的实验任务有哪些运行？", 2)).isEqualTo("缺少 createdAt，无法确定最近创建的 Task。");
+        verify(tasks).getByProjectId(707L, null);
+        verifyNoMoreInteractions(tasks); verifyNoInteractions(runs, metrics, logs, artifacts);
+    }
+
+    private ExperimentTaskVO projectTask(String code, LocalDateTime createdAt) {
+        var task = new ExperimentTaskVO(); task.setId(3L); task.setProjectId(707L);
+        task.setTaskCode(code); task.setName("实验任务"); task.setStatus("TODO"); task.setCreatedAt(createdAt);
+        return task;
     }
 
     private String chat(Mode mode, String question, int expectedRequests) throws Exception {
@@ -193,7 +255,7 @@ class AiToolChainingTests {
             // 校验实际请求里四个工具都存在，但没有多余模型轮次或其他 Tool 的执行。
             var toolNames = StreamSupport.stream(model.requests.get(0).get("tools").spliterator(), false)
                     .map(tool -> tool.get("function").get("name").asString()).toList();
-            assertThat(toolNames).containsExactlyInAnyOrder("queryTaskRuns", "queryRunMetrics", "queryRunLogs", "queryRunArtifacts");
+            assertThat(toolNames).containsExactlyInAnyOrder("queryProjectTasks", "queryTaskRuns", "queryRunMetrics", "queryRunLogs", "queryRunArtifacts");
             return answer.get();
         }
     }
@@ -224,7 +286,7 @@ class AiToolChainingTests {
         return metric;
     }
 
-    private enum Mode { CHAIN, SINGLE, KNOWLEDGE }
+    private enum Mode { CHAIN, SINGLE, KNOWLEDGE, PROJECT_SINGLE, PROJECT_CHAIN }
 
     private static final class ScriptedModel implements AutoCloseable {
         private final JsonMapper mapper = JsonMapper.builder().build();
@@ -233,6 +295,7 @@ class AiToolChainingTests {
         private final List<JsonNode> requests = new CopyOnWriteArrayList<>();
         private final AtomicReference<Throwable> failure = new AtomicReference<>();
         private String selectedRunCode;
+        private String selectedTaskCode;
 
         private ScriptedModel(Mode mode) throws Exception {
             this.mode = mode;
@@ -262,6 +325,9 @@ class AiToolChainingTests {
             if (mode == Mode.KNOWLEDGE) {
                 assertThat(round).isEqualTo(1);
                 return finalText("PSNR 是峰值信噪比。");
+            }
+            if (mode == Mode.PROJECT_SINGLE || mode == Mode.PROJECT_CHAIN) {
+                return respondProject(request, round);
             }
             if (round == 1) {
                 String system = request.get("messages").get(0).get("content").asString();
@@ -308,9 +374,38 @@ class AiToolChainingTests {
                     + " 的 PSNR 是 " + metric.get("metricValue").asDouble() + unit + "。");
         }
 
+        private String respondProject(JsonNode request, int round) {
+            if (round == 1) {
+                String system = request.get("messages").get(0).get("content").asString();
+                assertThat(system).contains("Project 1", "项目 1", "P-1", "queryProjectTasks", "createdAt 最大", "最先出现", "projectId");
+                assertThat(system).doesNotContain("当前没有提供项目（Project）查询");
+                return toolCall("call_project", "queryProjectTasks", "{\"projectCode\":\"P-1\",\"status\":null}");
+            }
+            JsonNode project = toolResult(request, "call_project");
+            assertNoInternalIds(project);
+            if (round == 2) {
+                assertThat(project.get("projectCode").asString()).isEqualTo("P-1");
+                if (!project.get("success").asBoolean()) return finalText(project.get("message").asString());
+                List<JsonNode> tasks = StreamSupport.stream(project.get("tasks").spliterator(), false).toList();
+                if (tasks.isEmpty()) return finalText("P-1 当前没有实验任务。");
+                if (mode == Mode.PROJECT_SINGLE) return finalText("P-1 的实验任务：" + tasks.get(0).get("taskCode").asString());
+                if (tasks.stream().anyMatch(task -> task.get("createdAt").isNull())) return finalText("缺少 createdAt，无法确定最近创建的 Task。");
+                selectedTaskCode = tasks.stream().sorted(Comparator.comparing((JsonNode task) -> LocalDateTime.parse(task.get("createdAt").asString())).reversed())
+                        .findFirst().orElseThrow().get("taskCode").asString();
+                return toolCall("call_runs", "queryTaskRuns", mapper.writeValueAsString(Map.of("taskCode", selectedTaskCode)));
+            }
+            assertThat(round).isEqualTo(3);
+            JsonNode result = toolResult(request, "call_runs"); assertNoInternalIds(result);
+            assertThat(result.get("taskCode").asString()).isEqualTo(selectedTaskCode);
+            if (!result.get("success").asBoolean()) return finalText(result.get("message").asString());
+            List<String> codes = StreamSupport.stream(result.get("runs").spliterator(), false).map(run -> run.get("runCode").asString()).toList();
+            return finalText(codes.isEmpty() ? selectedTaskCode + " 当前暂无 Run。" : selectedTaskCode + " 的运行：" + String.join("、", codes));
+        }
+
         private void assertNoInternalIds(JsonNode node) {
             if (node.isObject()) {
                 assertThat(node.has("id")).isFalse();
+                assertThat(node.has("projectId")).isFalse();
                 assertThat(node.has("taskId")).isFalse();
                 assertThat(node.has("runId")).isFalse();
             }

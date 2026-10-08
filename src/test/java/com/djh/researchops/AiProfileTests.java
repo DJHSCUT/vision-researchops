@@ -7,6 +7,8 @@ import com.djh.researchops.service.ExperimentLogService;
 import com.djh.researchops.service.ResultArtifactService;
 import com.djh.researchops.tool.RunArtifactTools;
 import com.djh.researchops.tool.TaskRunTools;
+import com.djh.researchops.tool.ProjectTaskTools;
+import com.djh.researchops.service.ResearchProjectService;
 import com.djh.researchops.service.ExperimentRunService;
 import com.djh.researchops.service.ExperimentTaskService;
 import com.djh.researchops.vo.ExperimentTaskVO;
@@ -47,6 +49,7 @@ class AiProfileTests {
 
     private final ApplicationContextRunner runner = new ApplicationContextRunner()
             .withInitializer(new ConfigDataApplicationContextInitializer())
+            .withBean(ResearchProjectService.class, () -> mock(ResearchProjectService.class))
             .withBean(ExperimentMetricService.class, () -> mock(ExperimentMetricService.class))
             .withBean(ExperimentLogService.class, () -> mock(ExperimentLogService.class))
             .withBean(ResultArtifactService.class, () -> mock(ResultArtifactService.class))
@@ -67,7 +70,7 @@ class AiProfileTests {
                 return service;
             })
             .withUserConfiguration(AutoConfigurationOnly.class, RunMetricTools.class, RunLogTools.class,
-                    RunArtifactTools.class, TaskRunTools.class, AiChatService.class, AiChatController.class);
+                    RunArtifactTools.class, TaskRunTools.class, ProjectTaskTools.class, AiChatService.class, AiChatController.class);
 
     @Test
     void ordinaryModeStartsWithoutApiKeyOrAiBeans() {
@@ -80,6 +83,7 @@ class AiProfileTests {
                     assertThat(context).doesNotHaveBean(RunLogTools.class);
                     assertThat(context).doesNotHaveBean(RunArtifactTools.class);
                     assertThat(context).doesNotHaveBean(TaskRunTools.class);
+                    assertThat(context).doesNotHaveBean(ProjectTaskTools.class);
                     assertThat(context).doesNotHaveBean(ChatModel.class);
                     assertThat(context).doesNotHaveBean(ChatClient.Builder.class);
                     assertThat(context).doesNotHaveBean(EmbeddingModel.class);
@@ -103,6 +107,7 @@ class AiProfileTests {
                     assertThat(context).hasSingleBean(RunLogTools.class);
                     assertThat(context).hasSingleBean(RunArtifactTools.class);
                     assertThat(context).hasSingleBean(TaskRunTools.class);
+                    assertThat(context).hasSingleBean(ProjectTaskTools.class);
                     assertThat(context).doesNotHaveBean(EmbeddingModel.class);
                     assertThat(context).doesNotHaveBean(ImageModel.class);
                     assertThat(context.getEnvironment().getProperty("spring.ai.openai.base-url"))

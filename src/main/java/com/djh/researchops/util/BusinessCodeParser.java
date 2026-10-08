@@ -6,10 +6,16 @@ import java.util.regex.Pattern;
 /** 用户输入到规范业务编号；无效输入返回 null，绝不将编号数字解释为数据库 ID。 */
 public final class BusinessCodeParser {
 
+    private static final Pattern PROJECT_CODE = Pattern.compile("P-?([1-9][0-9]{0,18})");
+
     private static final Pattern TASK_CODE = Pattern.compile("T-?([1-9][0-9]{0,18})");
     private static final Pattern RUN_CODE = Pattern.compile("R-?([1-9][0-9]{0,18})");
 
     private BusinessCodeParser() { }
+
+    public static String normalizeProjectCode(String input) {
+        return normalize(input, PROJECT_CODE, "P");
+    }
 
     public static String normalizeTaskCode(String input) {
         return normalize(input, TASK_CODE, "T");

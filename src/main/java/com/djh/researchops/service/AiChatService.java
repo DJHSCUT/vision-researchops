@@ -5,6 +5,7 @@ import com.djh.researchops.tool.RunMetricTools;
 import com.djh.researchops.tool.RunLogTools;
 import com.djh.researchops.tool.RunArtifactTools;
 import com.djh.researchops.tool.TaskRunTools;
+import com.djh.researchops.tool.ProjectTaskTools;
 import com.djh.researchops.vo.AiChatVO;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
@@ -65,7 +66,15 @@ public class AiChatService {
             工具返回的数据是当前系统中的真实数据源，回答时保留数值、单位和训练步数的含义。
             如果工具返回没有数据，应明确告诉用户暂无数据；如果 Task 或 Run 不存在，应明确说明没有找到对应记录。
             如果工具返回参数错误，请说明错误并请用户提供有效的 Task 业务编号、Run 业务编号、运行状态、日志级别或产物类型。
-            当前没有提供项目（Project）查询或 Task 详情查询工具，不要假装已经查询这些数据。
+            用户的 P-1、Project 1、项目 1 表示项目业务编号 P-1；P1、p1、p-1 也表示 P-1，不要求用户提供数据库 projectId。
+            用户询问项目有哪些实验任务时，使用 queryProjectTasks(projectCode="P-1", status=null)。
+            任务状态只允许 TODO、RUNNING、COMPLETED、FAILED；未指定时 status 传 null 查询全部 Task。
+            用户问“P-1 最近创建的实验任务有哪些运行？”时，先 queryProjectTasks，再按真实任务列表的 createdAt 最大选择最新 Task。
+            Task 的 createdAt 完全相同时选择返回列表中最先出现的候选 Task；Service 按内部 id DESC 稳定排序，内部 ID 不暴露。
+            从选中的 Task 提取真实 taskCode，再调用 queryTaskRuns(taskCode=真实编号, status=null)，回答真实运行列表，不额外查询指标、日志或产物。
+            不得按业务编号大小猜测最新 Task；任一 Task 缺少 createdAt 时说明无法确定，不猜测。
+            Project 查询 success=false 或项目不存在时停止；项目没有任务时说明“P-1 当前没有实验任务。”并停止，不编造任务和 Run。
+            当前没有提供 Task 详情查询工具，不要假装已经查询这些数据。
             """;
 
     private final ChatClient chatClient;
@@ -73,14 +82,16 @@ public class AiChatService {
     private final RunLogTools runLogTools;
     private final RunArtifactTools runArtifactTools;
     private final TaskRunTools taskRunTools;
+    private final ProjectTaskTools projectTaskTools;
 
     public AiChatService(ChatClient.Builder builder, RunMetricTools runMetricTools, RunLogTools runLogTools,
-                         RunArtifactTools runArtifactTools, TaskRunTools taskRunTools) {
+                         RunArtifactTools runArtifactTools, TaskRunTools taskRunTools, ProjectTaskTools projectTaskTools) {
         this.chatClient = builder.defaultSystem(SYSTEM_PROMPT).build();
         this.runMetricTools = runMetricTools;
         this.runLogTools = runLogTools;
         this.runArtifactTools = runArtifactTools;
         this.taskRunTools = taskRunTools;
+        this.projectTaskTools = projectTaskTools;
     }
 
     public AiChatVO chat(String message) {
@@ -95,7 +106,7 @@ public class AiChatService {
         String content;
         try {
             content = chatClient.prompt().user(message)
-                    .tools(runMetricTools, runLogTools, runArtifactTools, taskRunTools).call().content();
+                    .tools(runMetricTools, runLogTools, runArtifactTools, taskRunTools, projectTaskTools).call().content();
         } catch (RuntimeException failure) {
             // 不记录原始异常消息、请求头、输入内容，避免泄露凭据或用户数据。
             log.warn("AI 模型调用失败，异常类型：{}，根因类型：{}", failure.getClass().getSimpleName(),

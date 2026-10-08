@@ -8,6 +8,7 @@ import com.djh.researchops.tool.RunMetricTools;
 import com.djh.researchops.tool.RunLogTools;
 import com.djh.researchops.tool.RunArtifactTools;
 import com.djh.researchops.tool.TaskRunTools;
+import com.djh.researchops.tool.ProjectTaskTools;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.client.ChatClient;
@@ -33,6 +34,7 @@ class AiChatServiceTests {
     private RunLogTools logTools;
     private RunArtifactTools artifactTools;
     private TaskRunTools taskRunTools;
+    private ProjectTaskTools projectTaskTools;
     private MockMvc mvc;
 
     @BeforeEach
@@ -48,7 +50,8 @@ class AiChatServiceTests {
         logTools = mock(RunLogTools.class);
         artifactTools = mock(RunArtifactTools.class);
         taskRunTools = mock(TaskRunTools.class);
-        service = new AiChatService(builder, tools, logTools, artifactTools, taskRunTools);
+        projectTaskTools = mock(ProjectTaskTools.class);
+        service = new AiChatService(builder, tools, logTools, artifactTools, taskRunTools, projectTaskTools);
         mvc = MockMvcBuilders.standaloneSetup(new AiChatController(service))
                 .setControllerAdvice(new GlobalExceptionHandler()).build();
     }
@@ -63,7 +66,7 @@ class AiChatServiceTests {
                 .andExpect(jsonPath("$.message").value("success"))
                 .andExpect(jsonPath("$.data.content").value("你好，我是 Vision ResearchOps 科研实验助手。"));
         verify(prompt).user("你好，你能做什么？");
-        verify(prompt).tools(tools, logTools, artifactTools, taskRunTools);
+        verify(prompt).tools(tools, logTools, artifactTools, taskRunTools, projectTaskTools);
         verify(prompt).call();
         verify(response).content();
     }
@@ -71,7 +74,7 @@ class AiChatServiceTests {
     @Test
     void systemPromptDistinguishesTaskRunsAndRunToolsFromGeneralKnowledge() {
         verify(builder).defaultSystem(argThat((String text) ->
-                text.contains("Vision ResearchOps") && text.contains("queryRunMetrics")
+                text.contains("queryProjectTasks") && text.contains("Project 1") && text.contains("项目 1") && text.contains("Vision ResearchOps") && text.contains("queryRunMetrics")
                         && text.contains("必须优先使用") && text.contains("不要凭模型记忆")
                         && text.contains("queryRunLogs") && text.contains("level=ERROR")
                         && text.contains("level=WARN") && text.contains("level=INFO")

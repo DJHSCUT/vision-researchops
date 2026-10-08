@@ -43,11 +43,16 @@ public class ExperimentTaskService {
     }
 
     public List<ExperimentTaskVO> getByProjectId(Long projectId) {
+        return getByProjectId(projectId, null);
+    }
+
+    public List<ExperimentTaskVO> getByProjectId(Long projectId, String status) {
 
         checkProjectExists(projectId);
 
         LambdaQueryWrapper<ExperimentTask> query = new LambdaQueryWrapper<>();
         query.eq(ExperimentTask::getProjectId, projectId)
+                .eq(status != null, ExperimentTask::getStatus, status)
                 .orderByDesc(ExperimentTask::getId);
 
         List<ExperimentTask> tasks = experimentTaskMapper.selectList(query);

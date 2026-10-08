@@ -1,5 +1,8 @@
 package com.djh.researchops.service;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.djh.researchops.util.BusinessCodeParser;
+
 import com.djh.researchops.dto.CreateProjectRequest;
 import com.djh.researchops.dto.UpdateProjectRequest;
 import com.djh.researchops.entity.ResearchProject;
@@ -19,6 +22,15 @@ public class ResearchProjectService {
     private final ResearchProjectMapper researchProjectMapper;
 
     private final BusinessCodeService businessCodeService;
+
+    public ResearchProjectVO getByProjectCode(String projectCode) {
+        String normalized = BusinessCodeParser.normalizeProjectCode(projectCode);
+        if (normalized == null) throw new BusinessException(400, "研究项目编号不合法");
+        ResearchProject project = researchProjectMapper.selectOne(new LambdaQueryWrapper<ResearchProject>()
+                .eq(ResearchProject::getProjectCode, normalized));
+        if (project == null) throw new BusinessException(404, "研究项目不存在");
+        return toVO(project);
+    }
 
     public ResearchProjectVO create(CreateProjectRequest request) {
 
