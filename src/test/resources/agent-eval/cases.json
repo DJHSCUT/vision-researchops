@@ -1,0 +1,630 @@
+[
+  {
+    "id": "project_tasks",
+    "question": "P-1 有哪些实验任务？",
+    "fixture": "default",
+    "script": [
+      {
+        "tool": "queryProjectTasks",
+        "arguments": {
+          "projectCode": "P-1",
+          "status": null
+        },
+        "success": true,
+        "resultChecks": {}
+      }
+    ],
+    "expectedCalls": [
+      {
+        "tool": "queryProjectTasks",
+        "arguments": {
+          "projectCode": "P-1",
+          "status": null
+        },
+        "success": true,
+        "resultChecks": {
+          "/projectCode": "P-1",
+          "/tasks/1/taskCode": "T-1"
+        }
+      }
+    ],
+    "answerContains": [
+      "P-1",
+      "T-1"
+    ],
+    "answerForbidden": []
+  },
+  {
+    "id": "project_chinese",
+    "question": "项目 1 有哪些实验任务？",
+    "fixture": "default",
+    "script": [
+      {
+        "tool": "queryProjectTasks",
+        "arguments": {
+          "projectCode": "P-1",
+          "status": null
+        },
+        "success": true,
+        "resultChecks": {}
+      }
+    ],
+    "expectedCalls": [
+      {
+        "tool": "queryProjectTasks",
+        "arguments": {
+          "projectCode": "P-1",
+          "status": null
+        },
+        "success": true,
+        "resultChecks": {
+          "/projectCode": "P-1",
+          "/tasks/1/taskCode": "T-1"
+        }
+      }
+    ],
+    "answerContains": [
+      "P-1",
+      "T-1"
+    ],
+    "answerForbidden": []
+  },
+  {
+    "id": "project_to_runs",
+    "question": "P-1 最近创建的任务有哪些运行？",
+    "fixture": "default",
+    "script": [
+      {
+        "tool": "queryProjectTasks",
+        "arguments": {
+          "projectCode": "P-1",
+          "status": null
+        },
+        "success": true,
+        "resultChecks": {}
+      },
+      {
+        "tool": "queryTaskRuns",
+        "arguments": {
+          "taskCode": "$latestTask",
+          "status": null
+        },
+        "success": true,
+        "resultChecks": {}
+      }
+    ],
+    "expectedCalls": [
+      {
+        "tool": "queryProjectTasks",
+        "arguments": {
+          "projectCode": "P-1",
+          "status": null
+        },
+        "success": true,
+        "resultChecks": {}
+      },
+      {
+        "tool": "queryTaskRuns",
+        "arguments": {
+          "taskCode": "T-1",
+          "status": null
+        },
+        "success": true,
+        "resultChecks": {}
+      }
+    ],
+    "answerContains": [
+      "T-1",
+      "R-2"
+    ],
+    "answerForbidden": []
+  },
+  {
+    "id": "task_to_psnr",
+    "question": "T-1 最近一次运行的 PSNR？",
+    "fixture": "default",
+    "script": [
+      {
+        "tool": "queryTaskRuns",
+        "arguments": {
+          "taskCode": "T-1",
+          "status": null
+        },
+        "success": true,
+        "resultChecks": {}
+      },
+      {
+        "tool": "queryRunMetrics",
+        "arguments": {
+          "runCode": "$latestRun"
+        },
+        "success": true,
+        "resultChecks": {}
+      }
+    ],
+    "expectedCalls": [
+      {
+        "tool": "queryTaskRuns",
+        "arguments": {
+          "taskCode": "T-1",
+          "status": null
+        },
+        "success": true,
+        "resultChecks": {}
+      },
+      {
+        "tool": "queryRunMetrics",
+        "arguments": {
+          "runCode": "R-2"
+        },
+        "success": true,
+        "resultChecks": {}
+      }
+    ],
+    "answerContains": [
+      "T-1",
+      "R-2",
+      "31.25",
+      "dB"
+    ],
+    "answerForbidden": []
+  },
+  {
+    "id": "run_psnr",
+    "question": "R-1 的 PSNR？",
+    "fixture": "default",
+    "script": [
+      {
+        "tool": "queryRunMetrics",
+        "arguments": {
+          "runCode": "R-1"
+        },
+        "success": true,
+        "resultChecks": {}
+      }
+    ],
+    "expectedCalls": [
+      {
+        "tool": "queryRunMetrics",
+        "arguments": {
+          "runCode": "R-1"
+        },
+        "success": true,
+        "resultChecks": {
+          "/metrics/0/metricName": "PSNR",
+          "/metrics/0/metricValue": 31.25
+        }
+      }
+    ],
+    "answerContains": [
+      "R-1",
+      "31.25",
+      "dB"
+    ],
+    "answerForbidden": []
+  },
+  {
+    "id": "run_errors",
+    "question": "R-1 有哪些错误日志？",
+    "fixture": "default",
+    "script": [
+      {
+        "tool": "queryRunLogs",
+        "arguments": {
+          "runCode": "R-1",
+          "level": "ERROR"
+        },
+        "success": true,
+        "resultChecks": {
+          "/logs/0/level": "ERROR"
+        }
+      }
+    ],
+    "expectedCalls": [
+      {
+        "tool": "queryRunLogs",
+        "arguments": {
+          "runCode": "R-1",
+          "level": "ERROR"
+        },
+        "success": true,
+        "resultChecks": {
+          "/logs/0/level": "ERROR"
+        }
+      }
+    ],
+    "answerContains": [
+      "R-1",
+      "ERROR",
+      "CUDA"
+    ],
+    "answerForbidden": []
+  },
+  {
+    "id": "run_models",
+    "question": "R-1 有哪些 MODEL 结果？",
+    "fixture": "default",
+    "script": [
+      {
+        "tool": "queryRunArtifacts",
+        "arguments": {
+          "runCode": "R-1",
+          "type": "MODEL"
+        },
+        "success": true,
+        "resultChecks": {
+          "/artifacts/0/artifactType": "MODEL"
+        }
+      }
+    ],
+    "expectedCalls": [
+      {
+        "tool": "queryRunArtifacts",
+        "arguments": {
+          "runCode": "R-1",
+          "type": "MODEL"
+        },
+        "success": true,
+        "resultChecks": {
+          "/artifacts/0/artifactType": "MODEL"
+        }
+      }
+    ],
+    "answerContains": [
+      "R-1",
+      "MODEL",
+      "model.bin"
+    ],
+    "answerForbidden": []
+  },
+  {
+    "id": "missing_project",
+    "question": "P-99999 有哪些任务？",
+    "fixture": "default",
+    "script": [
+      {
+        "tool": "queryProjectTasks",
+        "arguments": {
+          "projectCode": "P-99999",
+          "status": null
+        },
+        "success": true,
+        "resultChecks": {}
+      }
+    ],
+    "expectedCalls": [
+      {
+        "tool": "queryProjectTasks",
+        "arguments": {
+          "projectCode": "P-99999",
+          "status": null
+        },
+        "success": false,
+        "resultChecks": {}
+      }
+    ],
+    "answerContains": [
+      "P-99999",
+      "不存在"
+    ],
+    "answerForbidden": []
+  },
+  {
+    "id": "missing_task",
+    "question": "T-99999 最近一次运行的 PSNR？",
+    "fixture": "default",
+    "script": [
+      {
+        "tool": "queryTaskRuns",
+        "arguments": {
+          "taskCode": "T-99999",
+          "status": null
+        },
+        "success": true,
+        "resultChecks": {}
+      }
+    ],
+    "expectedCalls": [
+      {
+        "tool": "queryTaskRuns",
+        "arguments": {
+          "taskCode": "T-99999",
+          "status": null
+        },
+        "success": false,
+        "resultChecks": {}
+      }
+    ],
+    "answerContains": [
+      "T-99999",
+      "不存在"
+    ],
+    "answerForbidden": []
+  },
+  {
+    "id": "missing_run",
+    "question": "R-99999 的 PSNR？",
+    "fixture": "default",
+    "script": [
+      {
+        "tool": "queryRunMetrics",
+        "arguments": {
+          "runCode": "R-99999"
+        },
+        "success": true,
+        "resultChecks": {}
+      }
+    ],
+    "expectedCalls": [
+      {
+        "tool": "queryRunMetrics",
+        "arguments": {
+          "runCode": "R-99999"
+        },
+        "success": false,
+        "resultChecks": {}
+      }
+    ],
+    "answerContains": [
+      "R-99999",
+      "不存在"
+    ],
+    "answerForbidden": []
+  },
+  {
+    "id": "invalid_code",
+    "question": "P-0 有哪些任务？",
+    "fixture": "default",
+    "script": [
+      {
+        "tool": "queryProjectTasks",
+        "arguments": {
+          "projectCode": "P-0",
+          "status": null
+        },
+        "success": true,
+        "resultChecks": {}
+      }
+    ],
+    "expectedCalls": [
+      {
+        "tool": "queryProjectTasks",
+        "arguments": {
+          "projectCode": "P-0",
+          "status": null
+        },
+        "success": false,
+        "resultChecks": {}
+      }
+    ],
+    "answerContains": [
+      "编号不合法"
+    ],
+    "answerForbidden": []
+  },
+  {
+    "id": "knowledge",
+    "question": "PSNR 是什么？",
+    "fixture": "default",
+    "script": [],
+    "expectedCalls": [],
+    "answerContains": [
+      "峰值信噪比"
+    ],
+    "answerForbidden": []
+  },
+  {
+    "id": "retry_invalid_status",
+    "question": "P-1 有哪些实验任务？",
+    "fixture": "default",
+    "script": [
+      {
+        "tool": "queryProjectTasks",
+        "arguments": {
+          "projectCode": "P-1",
+          "status": "ACTIVE"
+        },
+        "success": true,
+        "resultChecks": {}
+      },
+      {
+        "tool": "queryProjectTasks",
+        "arguments": {
+          "projectCode": "P-1",
+          "status": null
+        },
+        "success": true,
+        "resultChecks": {}
+      }
+    ],
+    "expectedCalls": [
+      {
+        "tool": "queryProjectTasks",
+        "arguments": {
+          "projectCode": "P-1",
+          "status": "ACTIVE"
+        },
+        "success": false,
+        "resultChecks": {}
+      },
+      {
+        "tool": "queryProjectTasks",
+        "arguments": {
+          "projectCode": "P-1",
+          "status": null
+        },
+        "success": true,
+        "resultChecks": {}
+      }
+    ],
+    "answerContains": [
+      "P-1",
+      "T-1"
+    ],
+    "answerForbidden": []
+  },
+  {
+    "id": "latest_without_psnr",
+    "question": "T-1 最近一次运行的 PSNR？",
+    "fixture": "no_psnr",
+    "script": [
+      {
+        "tool": "queryTaskRuns",
+        "arguments": {
+          "taskCode": "T-1",
+          "status": null
+        },
+        "success": true,
+        "resultChecks": {}
+      },
+      {
+        "tool": "queryRunMetrics",
+        "arguments": {
+          "runCode": "$latestRun"
+        },
+        "success": true,
+        "resultChecks": {}
+      }
+    ],
+    "expectedCalls": [
+      {
+        "tool": "queryTaskRuns",
+        "arguments": {
+          "taskCode": "T-1",
+          "status": null
+        },
+        "success": true,
+        "resultChecks": {}
+      },
+      {
+        "tool": "queryRunMetrics",
+        "arguments": {
+          "runCode": "R-2"
+        },
+        "success": true,
+        "resultChecks": {}
+      }
+    ],
+    "answerContains": [
+      "R-2",
+      "没有 PSNR"
+    ],
+    "answerForbidden": [
+      "31.25",
+      "dB",
+      "R-77"
+    ]
+  },
+  {
+    "id": "single_no_extra_tools",
+    "question": "R-1 的 PSNR？",
+    "fixture": "default",
+    "script": [
+      {
+        "tool": "queryRunMetrics",
+        "arguments": {
+          "runCode": "R-1"
+        },
+        "success": true,
+        "resultChecks": {}
+      }
+    ],
+    "expectedCalls": [
+      {
+        "tool": "queryRunMetrics",
+        "arguments": {
+          "runCode": "R-1"
+        },
+        "success": true,
+        "resultChecks": {}
+      }
+    ],
+    "answerContains": [
+      "R-1",
+      "31.25"
+    ],
+    "answerForbidden": []
+  },
+  {
+    "id": "empty_project",
+    "question": "P-1 有哪些任务？",
+    "fixture": "empty_project",
+    "script": [
+      {
+        "tool": "queryProjectTasks",
+        "arguments": {
+          "projectCode": "P-1",
+          "status": null
+        },
+        "success": true,
+        "resultChecks": {}
+      }
+    ],
+    "expectedCalls": [
+      {
+        "tool": "queryProjectTasks",
+        "arguments": {
+          "projectCode": "P-1",
+          "status": null
+        },
+        "success": true,
+        "resultChecks": {}
+      }
+    ],
+    "answerContains": [
+      "P-1",
+      "没有实验任务"
+    ],
+    "answerForbidden": []
+  },
+  {
+    "id": "stable_task_tie",
+    "question": "P-1 最近创建的任务有哪些运行？",
+    "fixture": "task_tie",
+    "script": [
+      {
+        "tool": "queryProjectTasks",
+        "arguments": {
+          "projectCode": "P-1",
+          "status": null
+        },
+        "success": true,
+        "resultChecks": {}
+      },
+      {
+        "tool": "queryTaskRuns",
+        "arguments": {
+          "taskCode": "$latestTask",
+          "status": null
+        },
+        "success": true,
+        "resultChecks": {}
+      }
+    ],
+    "expectedCalls": [
+      {
+        "tool": "queryProjectTasks",
+        "arguments": {
+          "projectCode": "P-1",
+          "status": null
+        },
+        "success": true,
+        "resultChecks": {}
+      },
+      {
+        "tool": "queryTaskRuns",
+        "arguments": {
+          "taskCode": "T-1",
+          "status": null
+        },
+        "success": true,
+        "resultChecks": {}
+      }
+    ],
+    "answerContains": [
+      "T-1",
+      "R-2"
+    ],
+    "answerForbidden": []
+  }
+]

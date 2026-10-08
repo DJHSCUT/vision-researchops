@@ -1,6 +1,7 @@
 package com.djh.researchops.service;
 
 import com.djh.researchops.exception.BusinessException;
+import com.djh.researchops.util.AiRequestLogContext;
 import com.djh.researchops.tool.RunMetricTools;
 import com.djh.researchops.tool.RunLogTools;
 import com.djh.researchops.tool.RunArtifactTools;
@@ -104,7 +105,7 @@ public class AiChatService {
         }
 
         String content;
-        try {
+        try (var requestLogContext = AiRequestLogContext.open()) {
             content = chatClient.prompt().user(message)
                     .tools(runMetricTools, runLogTools, runArtifactTools, taskRunTools, projectTaskTools).call().content();
         } catch (RuntimeException failure) {

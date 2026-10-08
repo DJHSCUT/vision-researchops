@@ -8,7 +8,8 @@ import com.djh.researchops.service.ExperimentRunService;
 import com.djh.researchops.util.BusinessCodeParser;
 import com.djh.researchops.vo.ArtifactToolItem;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
+import com.djh.researchops.util.ToolInvocationLog;
+import com.djh.researchops.util.ToolInvocationLog.Outcome;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 import org.springframework.context.annotation.Profile;
@@ -17,7 +18,6 @@ import org.springframework.stereotype.Component;
 import java.util.List;
 import java.util.Locale;
 
-@Slf4j
 @Component
 @Profile("ai")
 @RequiredArgsConstructor
@@ -36,30 +36,36 @@ public class RunArtifactTools {
             @ToolParam(description = "可选实验产物类型，只允许 IMAGE、MODEL、POINT_CLOUD、CHECKPOINT、REPORT、OTHER。用户询问图片或结果图时传 IMAGE；模型文件传 MODEL；点云传 POINT_CLOUD；检查点传 CHECKPOINT；报告传 REPORT；未明确指定类型时可以传 null", required = false) String type) {
         runCode = BusinessCodeParser.normalizeRunCode(runCode);
         String normalizedType = type == null ? null : type.trim().toUpperCase(Locale.ROOT).replace(' ', '_');
-        log.info("queryRunArtifacts invoked, runCode={}, type={}", runCode, normalizedType);
-        if (runCode == null) {
-            return new RunArtifactsToolResult(runCode, normalizedType, false, "实验运行编号不合法，请提供 R-1 格式的业务编号", List.of());
-        }
-        if (normalizedType != null && !ARTIFACT_TYPES.contains(normalizedType)) {
-            return new RunArtifactsToolResult(runCode, normalizedType, false, "实验产物类型不合法", List.of());
-        }
+        try (var trace = new ToolInvocationLog("queryRunArtifacts", runCode, "type", normalizedType)) {
+            try {
+                if (runCode == null) {
+                    return trace.complete(new RunArtifactsToolResult(runCode, normalizedType, false, "实验运行编号不合法，请提供 R-1 格式的业务编号", List.of()), Outcome.INVALID_ARGUMENT, 0);
+                }
+                if (normalizedType != null && !ARTIFACT_TYPES.contains(normalizedType)) {
+                    return trace.complete(new RunArtifactsToolResult(runCode, normalizedType, false, "实验产物类型不合法", List.of()), Outcome.INVALID_ARGUMENT, 0);
+                }
 
-        List<ResultArtifactVO> artifacts;
-        try {
-            Long runId = experimentRunService.getByRunCode(runCode).getId();
-            artifacts = resultArtifactService.getByRunId(runId, normalizedType);
-        } catch (BusinessException failure) {
-            // 只转换 Service 明确表示的 Run 不存在，其他业务或系统故障继续抛出。
-            if (failure.getCode() != 404 || !"实验运行不存在".equals(failure.getMessage())) {
+                List<ResultArtifactVO> artifacts;
+                try {
+                    Long runId = experimentRunService.getByRunCode(runCode).getId();
+                    artifacts = resultArtifactService.getByRunId(runId, normalizedType);
+                } catch (BusinessException failure) {
+                    // 只转换 Service 明确表示的 Run 不存在，其他业务或系统故障继续抛出。
+                    if (failure.getCode() != 404 || !"实验运行不存在".equals(failure.getMessage())) {
+                        throw failure;
+                    }
+
+                    return trace.complete(new RunArtifactsToolResult(runCode, normalizedType, false, "运行 " + runCode + " 不存在", List.of()), Outcome.NOT_FOUND, 0);
+                }
+
+                String message = artifacts.isEmpty()
+                        ? (normalizedType == null ? "当前实验运行暂无实验产物" : "当前实验运行暂无 " + normalizedType + " 类型实验产物")
+                        : "查询成功";
+                return trace.complete(new RunArtifactsToolResult(runCode, normalizedType, true, message, artifacts.stream().map(ArtifactToolItem::from).toList()), Outcome.SUCCESS, artifacts.size());
+            } catch (RuntimeException failure) {
+                trace.error(failure);
                 throw failure;
             }
-            log.info("queryRunArtifacts run not found, runCode={}, type={}", runCode, normalizedType);
-            return new RunArtifactsToolResult(runCode, normalizedType, false, "运行 " + runCode + " 不存在", List.of());
         }
-        log.info("queryRunArtifacts completed, runCode={}, type={}, artifactCount={}", runCode, normalizedType, artifacts.size());
-        String message = artifacts.isEmpty()
-                ? (normalizedType == null ? "当前实验运行暂无实验产物" : "当前实验运行暂无 " + normalizedType + " 类型实验产物")
-                : "查询成功";
-        return new RunArtifactsToolResult(runCode, normalizedType, true, message, artifacts.stream().map(ArtifactToolItem::from).toList());
     }
 }

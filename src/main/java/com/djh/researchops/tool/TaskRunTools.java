@@ -8,7 +8,8 @@ import com.djh.researchops.service.ExperimentTaskService;
 import com.djh.researchops.util.BusinessCodeParser;
 import com.djh.researchops.vo.RunToolItem;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
+import com.djh.researchops.util.ToolInvocationLog;
+import com.djh.researchops.util.ToolInvocationLog.Outcome;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 import org.springframework.context.annotation.Profile;
@@ -17,7 +18,6 @@ import org.springframework.stereotype.Component;
 import java.util.List;
 import java.util.Locale;
 
-@Slf4j
 @Component
 @Profile("ai")
 @RequiredArgsConstructor
@@ -33,30 +33,36 @@ public class TaskRunTools {
             @ToolParam(required = false, description = "可选实验运行状态，只允许 PENDING、RUNNING、COMPLETED、FAILED。用户询问失败运行时传 FAILED，正在运行时传 RUNNING，已完成时传 COMPLETED，等待运行时传 PENDING；未明确指定状态时可以传 null") String status) {
         taskCode = BusinessCodeParser.normalizeTaskCode(taskCode);
         String normalizedStatus = status == null ? null : status.trim().toUpperCase(Locale.ROOT);
-        log.info("queryTaskRuns invoked, taskCode={}, status={}", taskCode, normalizedStatus);
-        if (taskCode == null) {
-            return new TaskRunsToolResult(taskCode, normalizedStatus, false, "实验任务编号不合法，请提供 T-1 格式的业务编号", List.of());
-        }
-        if (normalizedStatus != null && !List.of("PENDING", "RUNNING", "COMPLETED", "FAILED").contains(normalizedStatus)) {
-            return new TaskRunsToolResult(taskCode, normalizedStatus, false, "实验运行状态不合法", List.of());
-        }
+        try (var trace = new ToolInvocationLog("queryTaskRuns", taskCode, "status", normalizedStatus)) {
+            try {
+                if (taskCode == null) {
+                    return trace.complete(new TaskRunsToolResult(taskCode, normalizedStatus, false, "实验任务编号不合法，请提供 T-1 格式的业务编号", List.of()), Outcome.INVALID_ARGUMENT, 0);
+                }
+                if (normalizedStatus != null && !List.of("PENDING", "RUNNING", "COMPLETED", "FAILED").contains(normalizedStatus)) {
+                    return trace.complete(new TaskRunsToolResult(taskCode, normalizedStatus, false, "实验运行状态不合法", List.of()), Outcome.INVALID_ARGUMENT, 0);
+                }
 
-        List<ExperimentRunVO> runs;
-        try {
-            Long taskId = experimentTaskService.getByTaskCode(taskCode).getId();
-            runs = experimentRunService.getByTaskId(taskId, normalizedStatus);
-        } catch (BusinessException failure) {
-            // 只转换 Service 明确表示的 Task 不存在；其他故障继续向外抛出。
-            if (failure.getCode() != 404 || !"实验任务不存在".equals(failure.getMessage())) {
+                List<ExperimentRunVO> runs;
+                try {
+                    Long taskId = experimentTaskService.getByTaskCode(taskCode).getId();
+                    runs = experimentRunService.getByTaskId(taskId, normalizedStatus);
+                } catch (BusinessException failure) {
+                    // 只转换 Service 明确表示的 Task 不存在；其他故障继续向外抛出。
+                    if (failure.getCode() != 404 || !"实验任务不存在".equals(failure.getMessage())) {
+                        throw failure;
+                    }
+
+                    return trace.complete(new TaskRunsToolResult(taskCode, normalizedStatus, false, "实验任务 " + taskCode + " 不存在", List.of()), Outcome.NOT_FOUND, 0);
+                }
+
+                String message = runs.isEmpty()
+                        ? (normalizedStatus == null ? "当前实验任务暂无运行记录" : "当前实验任务暂无 " + normalizedStatus + " 状态运行记录")
+                        : "查询成功";
+                return trace.complete(new TaskRunsToolResult(taskCode, normalizedStatus, true, message, runs.stream().map(RunToolItem::from).toList()), Outcome.SUCCESS, runs.size());
+            } catch (RuntimeException failure) {
+                trace.error(failure);
                 throw failure;
             }
-            log.info("queryTaskRuns task not found, taskCode={}, status={}", taskCode, normalizedStatus);
-            return new TaskRunsToolResult(taskCode, normalizedStatus, false, "实验任务 " + taskCode + " 不存在", List.of());
         }
-        log.info("queryTaskRuns completed, taskCode={}, status={}, runCount={}", taskCode, normalizedStatus, runs.size());
-        String message = runs.isEmpty()
-                ? (normalizedStatus == null ? "当前实验任务暂无运行记录" : "当前实验任务暂无 " + normalizedStatus + " 状态运行记录")
-                : "查询成功";
-        return new TaskRunsToolResult(taskCode, normalizedStatus, true, message, runs.stream().map(RunToolItem::from).toList());
     }
 }

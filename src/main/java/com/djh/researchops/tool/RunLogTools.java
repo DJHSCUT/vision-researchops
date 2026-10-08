@@ -8,7 +8,8 @@ import com.djh.researchops.service.ExperimentRunService;
 import com.djh.researchops.util.BusinessCodeParser;
 import com.djh.researchops.vo.LogToolItem;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
+import com.djh.researchops.util.ToolInvocationLog;
+import com.djh.researchops.util.ToolInvocationLog.Outcome;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 import org.springframework.context.annotation.Profile;
@@ -17,7 +18,6 @@ import org.springframework.stereotype.Component;
 import java.util.List;
 import java.util.Locale;
 
-@Slf4j
 @Component
 @Profile("ai")
 @RequiredArgsConstructor
@@ -33,30 +33,36 @@ public class RunLogTools {
             @ToolParam(required = false, description = "可选日志级别，只允许 INFO、WARN、ERROR。用户询问错误日志时传 ERROR，警告日志时传 WARN，普通日志时传 INFO；没有明确级别时可以传 null") String level) {
         runCode = BusinessCodeParser.normalizeRunCode(runCode);
         String normalizedLevel = level == null ? null : level.trim().toUpperCase(Locale.ROOT);
-        log.info("queryRunLogs invoked, runCode={}, level={}", runCode, normalizedLevel);
-        if (runCode == null) {
-            return new RunLogsToolResult(runCode, normalizedLevel, false, "实验运行编号不合法，请提供 R-1 格式的业务编号", List.of());
-        }
-        if (normalizedLevel != null && !List.of("INFO", "WARN", "ERROR").contains(normalizedLevel)) {
-            return new RunLogsToolResult(runCode, normalizedLevel, false, "日志级别不合法", List.of());
-        }
+        try (var trace = new ToolInvocationLog("queryRunLogs", runCode, "level", normalizedLevel)) {
+            try {
+                if (runCode == null) {
+                    return trace.complete(new RunLogsToolResult(runCode, normalizedLevel, false, "实验运行编号不合法，请提供 R-1 格式的业务编号", List.of()), Outcome.INVALID_ARGUMENT, 0);
+                }
+                if (normalizedLevel != null && !List.of("INFO", "WARN", "ERROR").contains(normalizedLevel)) {
+                    return trace.complete(new RunLogsToolResult(runCode, normalizedLevel, false, "日志级别不合法", List.of()), Outcome.INVALID_ARGUMENT, 0);
+                }
 
-        List<ExperimentLogVO> logs;
-        try {
-            Long runId = experimentRunService.getByRunCode(runCode).getId();
-            logs = experimentLogService.getByRunId(runId, normalizedLevel);
-        } catch (BusinessException failure) {
-            // 仅将现有 Service 明确表示的 Run 不存在转换为业务结果。
-            if (failure.getCode() != 404 || !"实验运行不存在".equals(failure.getMessage())) {
+                List<ExperimentLogVO> logs;
+                try {
+                    Long runId = experimentRunService.getByRunCode(runCode).getId();
+                    logs = experimentLogService.getByRunId(runId, normalizedLevel);
+                } catch (BusinessException failure) {
+                    // 仅将现有 Service 明确表示的 Run 不存在转换为业务结果。
+                    if (failure.getCode() != 404 || !"实验运行不存在".equals(failure.getMessage())) {
+                        throw failure;
+                    }
+
+                    return trace.complete(new RunLogsToolResult(runCode, normalizedLevel, false, "运行 " + runCode + " 不存在", List.of()), Outcome.NOT_FOUND, 0);
+                }
+
+                String message = logs.isEmpty()
+                        ? (normalizedLevel == null ? "当前实验运行暂无日志" : "当前实验运行暂无 " + normalizedLevel + " 日志")
+                        : "查询成功";
+                return trace.complete(new RunLogsToolResult(runCode, normalizedLevel, true, message, logs.stream().map(LogToolItem::from).toList()), Outcome.SUCCESS, logs.size());
+            } catch (RuntimeException failure) {
+                trace.error(failure);
                 throw failure;
             }
-            log.info("queryRunLogs run not found, runCode={}, level={}", runCode, normalizedLevel);
-            return new RunLogsToolResult(runCode, normalizedLevel, false, "运行 " + runCode + " 不存在", List.of());
         }
-        log.info("queryRunLogs completed, runCode={}, level={}, logCount={}", runCode, normalizedLevel, logs.size());
-        String message = logs.isEmpty()
-                ? (normalizedLevel == null ? "当前实验运行暂无日志" : "当前实验运行暂无 " + normalizedLevel + " 日志")
-                : "查询成功";
-        return new RunLogsToolResult(runCode, normalizedLevel, true, message, logs.stream().map(LogToolItem::from).toList());
     }
 }
