@@ -13,3 +13,13 @@ researchops:
     qdrant-use-tls: false
     qdrant-timeout: 15s
     collection-name: researchops_knowledge_v1
+    ask:
+      # Explicit local-development opt-in; also requires BOTH ai and rag profiles.
+      enabled: ${RAG_ASK_ENABLED:false}
+      # Provisional DEMO cutoff; calibrate against relevant/unrelated questions, not a universal threshold.
+      min-score: ${RAG_ASK_MIN_SCORE:0.60}
+      max-context-chars: 6000
+      max-chunk-chars: 1200
+      max-answer-chars: 6000
+      max-output-tokens: 1024
+      project-root: ${RAG_PROJECT_ROOT:.}
