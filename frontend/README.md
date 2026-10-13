@@ -1,6 +1,6 @@
 # Vision ResearchOps frontend
 
-Vue 3 + Vite + Vue Router + Axios + Element Plus. JavaScript only; no Pinia or mock data.
+Vue 3 + Vite + Vue Router + Axios + Element Plus. JavaScript only; no Pinia or runtime mock data. Offline tests use mocked external APIs.
 
 ## Start locally
 
@@ -29,7 +29,11 @@ Vue 3 + Vite + Vue Router + Axios + Element Plus. JavaScript only; no Pinia or m
 npm run build
 ```
 
-`dist/` is the production bundle. Vite's development proxy forwards `/api` to `http://localhost:8080`. A production host must also forward `/api` to the backend and fall back to `index.html` for Vue Router history URLs. Vite preview is only for inspecting the built frontend; it is not a production deployment configuration.
+`dist/` is the production bundle. Vite's development proxy forwards `/api` to `http://127.0.0.1:8080`. A production host must also forward `/api` to the backend and fall back to `index.html` for Vue Router history URLs. Vite preview is only for inspecting the built frontend; it is not a production deployment configuration. Preview does not inherit development proxies.
+
+The AI assistant at `/ai` defaults to Agent mode (`POST /api/ai/chat`). RAG mode (`POST /dev/rag/ask`) is enabled only in Vite development, through an exact-route loopback proxy. Do not add a production `/dev` proxy. See [dual-mode implementation and acceptance](../docs/rag-ui-v1.md).
+
+Run the frontend offline tests with `npm test`. The added test dependencies require Node 22.22.2+, 24.15.0+, or 26+ in their supported major ranges; this session used Node 24.19.0.
 
 ## Backend contract, verified against source
 

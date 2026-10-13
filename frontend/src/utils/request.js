@@ -4,9 +4,9 @@ import { ElMessage } from 'element-plus'
 const request = axios.create({ baseURL: '/api', timeout: 15000 })
 
 // Keep errors available to pages so an unavailable service never looks like an empty list.
-function rejectWithMessage(error, message) {
+function rejectWithMessage(error, message, config) {
   error.userMessage = message
-  ElMessage.error(message)
+  if (!config?.safeAiErrors) ElMessage.error(message)
   return Promise.reject(error)
 }
 
@@ -15,10 +15,12 @@ request.interceptors.response.use(
     if (response.status === 204) return null
     const body = response.data
     if (!body || typeof body.code !== 'number' || !Object.hasOwn(body, 'data')) {
-      return rejectWithMessage(new Error('服务器响应格式异常'), '服务器响应格式异常，请稍后重试。')
+      return rejectWithMessage(new Error('服务器响应格式异常'), '服务器响应格式异常，请稍后重试。', response.config)
     }
     if (body.code < 200 || body.code >= 300) {
-      return rejectWithMessage(new Error(body.message), body.message || '请求失败，请稍后重试。')
+      const error = new Error(response.config?.safeAiErrors ? '请求失败' : body.message || '请求失败')
+      error.response = { status: body.code }
+      return rejectWithMessage(error, response.config?.safeAiErrors ? '请求失败，请稍后重试。' : body.message || '请求失败，请稍后重试。', response.config)
     }
     return body.data
   },
@@ -32,12 +34,12 @@ request.interceptors.response.use(
       503: '服务暂时不可用，请稍后重试。',
       504: '后端响应超时，请稍后重试。',
     }
-    const message = backendMessage || (error.response
+    const message = (!error.config?.safeAiErrors && backendMessage) || (error.response
       ? fallback[error.response.status] || '请求失败，请稍后重试。'
       : error.code === 'ECONNABORTED'
         ? '请求超时，请检查后端服务后重试。'
         : '无法连接服务，请检查网络及后端服务是否已启动。')
-    return rejectWithMessage(error, message)
+    return rejectWithMessage(error, message, error.config)
   },
 )
 
