@@ -91,6 +91,26 @@ class AiProfileTests {
                 });
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"ai,rag", "rag,ai"})
+    void ragProfileKeepsDeepSeekAsTheOnlyChatModelInEitherProfileOrder(String profiles) {
+        runner.withUserConfiguration(com.djh.researchops.rag.RagConfiguration.class,
+                        com.djh.researchops.rag.RagDevController.class)
+                .withPropertyValues("spring.profiles.active=" + profiles,
+                        "LLM_API_KEY=test-placeholder-not-a-real-key", "LLM_BASE_URL=https://api.deepseek.com")
+                .run(context -> {
+                    assertThat(context).hasNotFailed();
+                    assertThat(context).hasSingleBean(ChatModel.class);
+                    assertThat(context.getBean(ChatModel.class)).isInstanceOf(org.springframework.ai.openai.OpenAiChatModel.class);
+                    assertThat(context).doesNotHaveBean(org.springframework.ai.ollama.OllamaChatModel.class);
+                    assertThat(context).hasSingleBean(ChatClient.Builder.class);
+                    assertThat(context).hasSingleBean(AiChatService.class);
+                    assertThat(context).hasSingleBean(EmbeddingModel.class);
+                    assertThat(context.getBean(EmbeddingModel.class)).isInstanceOf(com.djh.researchops.rag.FixedDimensionEmbeddingModel.class);
+                    assertThat(context).hasSingleBean(com.djh.researchops.rag.RagService.class);
+                });
+    }
+
     @Test
     void aiProfileCreatesChatClientBuilderAndOnlyChatCapability() {
         // 仅用于构造客户端的测试凭据；本测试不执行任何网络请求。

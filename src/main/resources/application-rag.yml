@@ -1,0 +1,15 @@
+# Explicit dev profile; no startup import, model pull, or collection initialization.
+# Core-module beans are configured under researchops.rag, not Spring AI starters.
+researchops:
+  rag:
+    enabled: ${RAG_ENABLED:true}
+    demo-directory: ${RAG_DEMO_DIRECTORY:docs/rag-demo}
+    chunk-size: 500
+    chunk-overlap: 80
+    ollama-base-url: ${OLLAMA_BASE_URL:http://localhost:11434}
+    ollama-timeout: 120s
+    qdrant-host: ${QDRANT_HOST:127.0.0.1}
+    qdrant-port: ${QDRANT_GRPC_PORT:6334}
+    qdrant-use-tls: false
+    qdrant-timeout: 15s
+    collection-name: researchops_knowledge_v1
